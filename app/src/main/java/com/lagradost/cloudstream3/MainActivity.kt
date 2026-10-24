@@ -658,6 +658,7 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
     override fun onPause() {
         super.onPause()
         CloudSync.stopForegroundPull()
+        com.lagradost.cloudstream3.flimmer.FlimmerTrakt.onPause()
         CloudSync.flushNow()
 
         // Start any delayed updates

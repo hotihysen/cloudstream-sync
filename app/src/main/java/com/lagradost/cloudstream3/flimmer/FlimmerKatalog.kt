@@ -81,6 +81,7 @@ class FlimmerKatalog : MainAPI() {
 
     override val mainPage = mainPageOf(
         "trending/all/week" to "Im Trend",
+        "trakt:watchlist" to "Meine Trakt-Watchlist",
         "movie/now_playing?region=$REGION" to "Neu im Kino",
         "discover/movie?sort_by=popularity.desc&watch_region=$REGION&with_watch_providers=8" to "Filme auf Netflix",
         "discover/tv?sort_by=popularity.desc&watch_region=$REGION&with_watch_providers=8" to "Serien auf Netflix",
@@ -262,6 +263,21 @@ class FlimmerKatalog : MainAPI() {
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        if (request.data == "trakt:watchlist") {
+            val items = if (page > 1 || !FlimmerTrakt.isLoggedIn()) emptyList() else coroutineScope {
+                FlimmerTrakt.watchlist().map { (isTv, id) ->
+                    async {
+                        try {
+                            val kind = if (isTv) "tv" else "movie"
+                            parseJson<TmdbItem>(tmdb("$kind/$id")).toSearch(kind)
+                        } catch (t: Throwable) {
+                            null
+                        }
+                    }
+                }.awaitAll().filterNotNull()
+            }
+            return newHomePageResponse(HomePageList(request.name, items), hasNext = false)
+        }
         val data = parseJson<TmdbPage>(tmdb(request.data, "page=$page"))
         val type = typeFromPath(request.data)
         val items = data.results.mapNotNull { it.toSearch(type) }

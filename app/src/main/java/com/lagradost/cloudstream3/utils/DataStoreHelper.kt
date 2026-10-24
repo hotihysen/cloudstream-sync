@@ -716,6 +716,11 @@ object DataStoreHelper {
      */
     fun setViewPosAndResume(id: Int?, position: Long, duration: Long, currentEpisode: Any?, nextEpisode: Any?) {
         setViewPos(id, position, duration)
+        try {
+            com.lagradost.cloudstream3.flimmer.FlimmerTrakt.onProgress(currentEpisode, position, duration)
+        } catch (t: Throwable) {
+            com.lagradost.cloudstream3.mvvm.logError(t)
+        }
         if (id != null) {
             when (val meta = currentEpisode) {
                 is ResultEpisode -> {
