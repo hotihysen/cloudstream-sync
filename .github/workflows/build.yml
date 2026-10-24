@@ -1,4 +1,5 @@
 name: APK bauen
+# Signiert mit SYNC_KEYSTORE_* aus den Repository-Secrets
 
 on:
   push:
