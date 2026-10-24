@@ -20,16 +20,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
 
       - name: Gradle einrichten
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
 
       - name: Signierschlüssel aus Secrets holen
         env:
@@ -48,7 +48,18 @@ jobs:
       - name: APK bauen
         run: |
           chmod +x gradlew
-          ./gradlew :app:assembleSyncRelease --no-daemon --stacktrace
+          set -o pipefail
+          ./gradlew :app:assembleSyncRelease --no-daemon --console=plain 2>&1 | tee build.log
+
+      - name: Fehler als Hinweis ausgeben
+        if: failure()
+        run: |
+          # Kompilierfehler und Gradle-Zusammenfassung als Annotationen (über die API lesbar)
+          grep -E '^e: ' build.log | head -n 40 | while IFS= read -r line; do echo "::error::$line"; done || true
+          awk '/What went wrong:/{f=1} f{print} /Try:/{if(f) exit}' build.log | head -n 40 > wrong.txt || true
+          if [ -s wrong.txt ]; then echo "::error title=Gradle::$(sed ':a;N;$!ba;s/\n/%0A/g' wrong.txt)"; fi
+          tail -n 60 build.log > tail.txt
+          echo "::warning title=Log-Ende::$(sed ':a;N;$!ba;s/\n/%0A/g' tail.txt)"
 
       - name: APK umbenennen
         id: apk
@@ -58,7 +69,7 @@ jobs:
           echo "version=$(date -u +%Y.%m.%d)-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
 
       - name: Als Build-Artefakt speichern
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: CloudStream-Sync
           path: CloudStream-Sync.apk
