@@ -1,3 +1,4 @@
+import java.util.Properties
 import com.android.build.gradle.internal.cxx.configure.gradleLocalProperties
 import org.jetbrains.dokka.gradle.engine.parameters.KotlinPlatform
 import org.jetbrains.dokka.gradle.engine.parameters.VisibilityModifier
@@ -89,7 +90,8 @@ android {
         // Immer derselbe Schlüssel, damit Updates über die installierte Version gehen.
         val syncKeyProps = rootProject.file("keystore/keystore.properties")
         if (syncKeyProps.exists()) {
-            val props = java.util.Properties().apply { syncKeyProps.inputStream().use { load(it) } }
+            val props = Properties()
+            syncKeyProps.inputStream().use { stream -> props.load(stream) }
             create("sync") {
                 storeFile = rootProject.file(props.getProperty("storeFile"))
                 storePassword = props.getProperty("storePassword")
