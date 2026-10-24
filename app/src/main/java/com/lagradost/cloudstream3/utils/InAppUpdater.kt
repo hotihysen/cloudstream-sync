@@ -40,6 +40,7 @@ import java.io.InputStreamReader
 object InAppUpdater {
     private const val GITHUB_USER_NAME = "recloudstream"
     private const val GITHUB_REPO = "cloudstream"
+    private const val FLIMMER_REPO = "hotihysen/cloudstream-sync"
 
     private const val PRERELEASE_PACKAGE_NAME = "com.lagradost.cloudstream3.prerelease"
     private const val LOG_TAG = "InAppUpdater"
@@ -88,8 +89,8 @@ object InAppUpdater {
             when {
                 // No updates on debug version
                 BuildConfig.DEBUG -> Update(false, null, null, null, null)
-                // Eigene Sync-Variante: offizielle Updates würden eine zweite App installieren
-                BuildConfig.FLAVOR == "sync" -> Update(false, null, null, null, null)
+                // Flimmer: Updates aus dem eigenen GitHub-Repository
+                BuildConfig.FLAVOR == "sync" -> getFlimmerUpdate()
                 BuildConfig.FLAVOR == "prerelease" || installPrerelease -> getPreReleaseUpdate()
                 else -> getReleaseUpdate()
             }
@@ -97,6 +98,27 @@ object InAppUpdater {
             Log.e(LOG_TAG, Log.getStackTraceString(e))
             Update(false, null, null, null, null)
         }
+    }
+
+    /**
+     * Flimmer: neueste Release aus hotihysen/cloudstream-sync. Die Tags heissen «build-<Nummer>»,
+     * die Nummer ist die Build-Nummer von GitHub Actions und steckt als FLIMMER_BUILD in der App.
+     */
+    private suspend fun getFlimmerUpdate(): Update {
+        val url = "https://api.github.com/repos/$FLIMMER_REPO/releases/latest"
+        val headers = mapOf("Accept" to "application/vnd.github.v3+json")
+        val release = parseJson<GithubRelease>(app.get(url, headers = headers).text)
+        val build = release.tagName.removePrefix("build-").toIntOrNull()
+            ?: return Update(false, null, null, null, null)
+        val asset = release.assets.firstOrNull { it.name.endsWith(".apk") }
+            ?: return Update(false, null, null, null, null)
+        return Update(
+            build > BuildConfig.FLIMMER_BUILD,
+            asset.browserDownloadUrl,
+            "Build $build",
+            release.body,
+            release.nodeId
+        )
     }
 
     private suspend fun Activity.getReleaseUpdate(): Update {

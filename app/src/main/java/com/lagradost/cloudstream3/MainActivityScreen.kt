@@ -58,8 +58,9 @@ object MainActivityScreen : Screen {
         val settings = rememberAppSettings()
         return viewModel(viewModelStoreOwner = activity) {
             GithubViewModel(
-                remoteUserName = APK_USERNAME,
-                remoteRepository = APK_REPOSITORY,
+                // Flimmer holt Updates aus dem eigenen Repository
+                remoteUserName = if (BuildConfig.FLAVOR == "sync") GithubReleases.FLIMMER_USERNAME else APK_USERNAME,
+                remoteRepository = if (BuildConfig.FLAVOR == "sync") GithubReleases.FLIMMER_REPOSITORY else APK_REPOSITORY,
                 remotePrereleaseTag = APK_PRERELEASE,
                 remoteContentType = APK_CONTENT_TYPE,
                 versionName = BuildConfig.VERSION_NAME,

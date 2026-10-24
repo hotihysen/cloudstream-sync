@@ -153,6 +153,7 @@ android {
             "ANILIST_KEY",
             "\"" + (System.getenv("ANILIST_KEY") ?: localProperties["anilist.key"]) + "\""
         )
+        buildConfigField("int", "FLIMMER_BUILD", "0")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -192,12 +193,15 @@ android {
             versionNameSuffix = "-PRE"
             versionCode = (System.currentTimeMillis() / 60000).toInt()
         }
-        // Eigene Variante mit Cloud-Sync; installiert sich neben dem offiziellen CloudStream.
-        // Signiert mit keystore/cloudstream-sync.jks (falls vorhanden), sonst mit dem lokalen Debug-Schlüssel.
+        // Flimmer: eigenständige App (eigene Paket-ID, Name, Symbol, Updates aus dem eigenen Repository).
+        // Signiert mit keystore/cloudstream-sync.jks (aus den GitHub-Secrets), sonst mit dem Debug-Schlüssel.
         create("sync") {
             dimension = "state"
-            applicationIdSuffix = ".sync"
-            versionNameSuffix = "-SYNC"
+            applicationId = "ch.hotihysen.flimmer"
+            val runNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "0").toInt()
+            versionCode = 1000 + runNumber
+            versionName = "Flimmer-$runNumber"
+            buildConfigField("int", "FLIMMER_BUILD", runNumber.toString())
             signingConfig = signingConfigs.findByName("sync") ?: signingConfigs.getByName("debug")
         }
     }

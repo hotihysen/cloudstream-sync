@@ -42,6 +42,8 @@ object GithubReleases : GithubRepository {
         @JsonProperty("object") @SerialName("object") val githubObject: GithubObject,
     )
 
+    const val FLIMMER_USERNAME = "hotihysen"
+    const val FLIMMER_REPOSITORY = "cloudstream-sync"
     const val APK_USERNAME = "recloudstream"
     const val APK_REPOSITORY = "cloudstream"
     const val APK_PRERELEASE = "pre-release"
@@ -97,7 +99,12 @@ object GithubReleases : GithubRepository {
         return GithubFile(
             digest = foundAsset.digest,
             downloadUrl = foundAsset.browserDownloadUrl,
-            displayName = foundAsset.name.substringBeforeLast("."),
+            // Flimmer: Tag «build-<n>» entspricht versionName «Flimmer-<n>» (Vergleich im GithubViewModel)
+            displayName = if (userName == FLIMMER_USERNAME) {
+                "Flimmer-" + latestRelease.tagName.removePrefix("build-")
+            } else {
+                foundAsset.name.substringBeforeLast(".")
+            },
             changeLog = latestRelease.body,
             tagName = latestRelease.tagName,
             nodeId = latestRelease.nodeId

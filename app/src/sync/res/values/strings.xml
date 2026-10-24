@@ -1,4 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">CloudStream Sync</string>
+    <string name="app_name">Flimmer</string>
+    <string name="play_with_app_name">Play with Flimmer</string>
+    <string name="blank_repo_message">Flimmer has no sources installed yet. Add a repository (repo JSON) under Settings, Extensions, and install the extensions you want.</string>
+    <string name="download_all_plugins_from_repo">Note: Third-party extensions are not part of Flimmer. You use them at your own responsibility.</string>
+    <string name="battery_dialog_message">To keep downloads and notifications running, Flimmer needs permission to run in the background. Press "OK" and then "Allow".</string>
+    <string name="app_info_intent_error">Unable to open Flimmer\'s app info.</string>
+    <string name="biometric_authentication_title">Unlock Flimmer</string>
+    <string name="biometric_warning">Your Flimmer data has been backed up. If you ever get locked out, clear the app data and restore from the backup.</string>
+    <string name="cs3wiki">Extension wiki</string>
 </resources>

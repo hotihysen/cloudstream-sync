@@ -1,13 +1,13 @@
-# CloudStream Sync: Anleitung
+# Flimmer: Anleitung
 
-Fork von CloudStream mit einer zusätzlichen Funktion: Wiedergabeposition, «Weiterschauen»-Liste und Gesehen-Markierungen werden zwischen Handy und Android-TV abgeglichen. Erweiterungen und Repo-JSON funktionieren wie im Original. Die App heisst «CloudStream Sync» und installiert sich neben einem vorhandenen CloudStream.
+Fork von CloudStream mit einer zusätzlichen Funktion: Wiedergabeposition, «Weiterschauen»-Liste und Gesehen-Markierungen werden zwischen Handy und Android-TV abgeglichen. Erweiterungen und Repo-JSON funktionieren wie im Original. Die App heisst «Flimmer» und ist eigenständig; sie installiert sich neben einem vorhandenen CloudStream und holt Updates aus diesem Repository (Einstellungen, Updates, «Nach Updates suchen").
 
 ## APK herunterladen
 
 Fester Link auf die jeweils neueste Version:
 
 ```
-https://github.com/hotihysen/cloudstream-sync/releases/latest/download/CloudStream-Sync.apk
+https://github.com/hotihysen/cloudstream-sync/releases/latest/download/Flimmer.apk
 ```
 
 Damit der Link ohne GitHub-Anmeldung funktioniert (z.B. in der TV-App «Downloader»), muss das Repository öffentlich sein: Repository, «Settings», ganz unten «Danger Zone», «Change visibility», «Public». Im Repository liegen keine Passwörter oder Schlüssel; der Signierschlüssel steckt geschützt in den Repository-Secrets und bleibt auch bei einem öffentlichen Repository geheim.

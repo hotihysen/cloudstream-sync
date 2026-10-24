@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Flimmer</string>
+    <string name="play_with_app_name">Mit Flimmer abspielen</string>
+    <string name="blank_repo_message">In Flimmer sind noch keine Quellen installiert. Füge unter Einstellungen, Erweiterungen ein Repository (Repo-JSON) hinzu und installiere die gewünschten Erweiterungen.</string>
+    <string name="download_all_plugins_from_repo">Hinweis: Erweiterungen von Drittanbietern sind nicht Teil von Flimmer. Du nutzt sie in eigener Verantwortung.</string>
+    <string name="battery_dialog_message">Damit Downloads und Benachrichtigungen zuverlässig laufen, braucht Flimmer die Erlaubnis, im Hintergrund zu arbeiten. Tippe auf «OK» und danach auf «Zulassen».</string>
+    <string name="app_info_intent_error">Die App-Info von Flimmer kann nicht geöffnet werden.</string>
+    <string name="biometric_authentication_title">Flimmer entsperren</string>
+    <string name="biometric_warning">Deine Flimmer-Daten wurden gesichert. Falls du dich einmal aussperrst: App-Daten löschen und das Backup wiederherstellen.</string>
+    <string name="cs3wiki">Erweiterungs-Wiki</string>
+</resources>

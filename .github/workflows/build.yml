@@ -66,20 +66,20 @@ jobs:
         id: apk
         run: |
           APK=$(ls app/build/outputs/apk/sync/release/*.apk | head -n1)
-          cp "$APK" CloudStream-Sync.apk
+          cp "$APK" Flimmer.apk
           echo "version=$(date -u +%Y.%m.%d)-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
 
       - name: Als Build-Artefakt speichern
         uses: actions/upload-artifact@v5
         with:
-          name: CloudStream-Sync
-          path: CloudStream-Sync.apk
+          name: Flimmer
+          path: Flimmer.apk
 
       - name: Release veröffentlichen
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: CloudStream Sync ${{ steps.apk.outputs.version }}
+          name: Flimmer Build ${{ github.run_number }}
           body: Automatisch gebaut aus ${{ github.sha }}
-          files: CloudStream-Sync.apk
+          files: Flimmer.apk
           make_latest: true
