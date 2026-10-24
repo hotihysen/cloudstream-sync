@@ -1,0 +1,73 @@
+name: APK bauen
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '*.md'
+      - 'sync-server/**'
+  workflow_dispatch:
+
+concurrency:
+  group: build
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Gradle einrichten
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Signierschlüssel aus Secrets holen
+        env:
+          KS_B64: ${{ secrets.SYNC_KEYSTORE_B64 }}
+          KS_PW: ${{ secrets.SYNC_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$KS_B64" ] && [ -n "$KS_PW" ]; then
+            mkdir -p keystore
+            echo "$KS_B64" | base64 -d > keystore/cloudstream-sync.jks
+            printf 'storePassword=%s\nkeyPassword=%s\nkeyAlias=sync\nstoreFile=keystore/cloudstream-sync.jks\n' "$KS_PW" "$KS_PW" > keystore/keystore.properties
+            echo "Eigener Signierschlüssel wird verwendet."
+          else
+            echo "::warning::Keine Secrets SYNC_KEYSTORE_B64 / SYNC_KEYSTORE_PASSWORD gesetzt. Die APK wird mit einem wechselnden Testschlüssel signiert; Updates müssen dann neu installiert werden."
+          fi
+
+      - name: APK bauen
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleSyncRelease --no-daemon --stacktrace
+
+      - name: APK umbenennen
+        id: apk
+        run: |
+          APK=$(ls app/build/outputs/apk/sync/release/*.apk | head -n1)
+          cp "$APK" CloudStream-Sync.apk
+          echo "version=$(date -u +%Y.%m.%d)-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      - name: Als Build-Artefakt speichern
+        uses: actions/upload-artifact@v4
+        with:
+          name: CloudStream-Sync
+          path: CloudStream-Sync.apk
+
+      - name: Release veröffentlichen
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: CloudStream Sync ${{ steps.apk.outputs.version }}
+          body: Automatisch gebaut aus ${{ github.sha }}
+          files: CloudStream-Sync.apk
+          make_latest: true

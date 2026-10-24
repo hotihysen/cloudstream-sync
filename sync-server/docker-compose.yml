@@ -1,0 +1,28 @@
+# Start:   docker compose up -d
+# Vorher .env anlegen (siehe .env.example)
+services:
+  sync:
+    build: .
+    restart: unless-stopped
+    environment:
+      SYNC_TOKENS: ${SYNC_TOKENS}
+    volumes:
+      - ./data:/data
+
+  # Caddy holt automatisch ein HTTPS-Zertifikat (Let's Encrypt) für deine Domain
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on:
+      - sync
+
+volumes:
+  caddy_data:
