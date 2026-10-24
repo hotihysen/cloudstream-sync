@@ -147,7 +147,6 @@ object SettingsGeneralScreen : SearchableSettings {
                 Preference.PreferenceItem.EditTextPreference(
                     title = "Server-Adresse",
                     subtitle = "%s",
-                    icon = painterResource(R.drawable.dns_24px),
                     preference = settings.sync.url,
                     onValueChanged = { v ->
                         val t = v.trim()
@@ -160,7 +159,6 @@ object SettingsGeneralScreen : SearchableSettings {
                 Preference.PreferenceItem.EditTextPreference(
                     title = "Zugangs-Token",
                     subtitle = if (syncToken.isBlank()) "Nicht gesetzt" else "Gesetzt (${syncToken.length} Zeichen)",
-                    icon = painterResource(R.drawable.cloud_2),
                     preference = settings.sync.token,
                 ),
                 Preference.PreferenceItem.TextPreference(
