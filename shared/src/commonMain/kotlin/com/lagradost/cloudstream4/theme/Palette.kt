@@ -3,7 +3,7 @@ package com.lagradost.cloudstream4.theme
 import androidx.compose.ui.graphics.Color
 
 enum class CloudStreamPrimaryColor(val color: Color) {
-    NORMAL(Color(0xFFFF7A4D)) // Flimmer-Orange,
+    NORMAL(Color(0xFFFF7A4D)), // Flimmer-Orange
     BLUE(Color(0xFF5664B7)),
     PURPLE(Color(0xFF6200EA)),
     GREEN(Color(0xFF00BFA5)),
