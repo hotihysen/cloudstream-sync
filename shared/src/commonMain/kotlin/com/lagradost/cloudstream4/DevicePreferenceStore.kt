@@ -36,6 +36,8 @@ class AppSettings internal constructor(
 /** Cloud-Sync zwischen Geräten (eigener Server) */
 class SyncPreferences(preferences: PreferenceStore) {
     val enabled = preferences.getBoolean("cloud_sync_enabled", false)
+    /** "gist" (GitHub Gist) oder "server" (eigener Server) */
+    val mode = preferences.getString("cloud_sync_mode", "gist")
     val url = preferences.getString("cloud_sync_url", "")
     val token = preferences.getString("cloud_sync_token", "")
 }

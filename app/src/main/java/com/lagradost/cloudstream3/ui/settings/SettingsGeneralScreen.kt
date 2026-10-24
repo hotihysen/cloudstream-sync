@@ -96,6 +96,8 @@ object SettingsGeneralScreen : SearchableSettings {
         val syncScope = rememberCoroutineScope()
         val syncEnabled by settings.sync.enabled.collectAsState()
         val syncToken by settings.sync.token.collectAsState()
+        val syncMode by settings.sync.mode.collectAsState()
+        val syncIsServer = syncMode == CloudSync.MODE_SERVER
         var syncStatus by remember { mutableStateOf(CloudSync.statusText(context)) }
         var syncBusy by remember { mutableStateOf(false) }
 
@@ -129,7 +131,7 @@ object SettingsGeneralScreen : SearchableSettings {
             preferenceItems = persistentListOf(
                 Preference.PreferenceItem.SwitchPreference(
                     title = "Fortschritt synchronisieren",
-                    subtitle = "Position und «Weiterschauen» über deinen eigenen Server mit anderen Geräten abgleichen",
+                    subtitle = "Position und «Weiterschauen» mit deinen anderen Geräten abgleichen",
                     icon = painterResource(R.drawable.baseline_sync_24),
                     preference = settings.sync.enabled,
                     onValueChanged = { on ->
@@ -144,9 +146,19 @@ object SettingsGeneralScreen : SearchableSettings {
                         true
                     },
                 ),
+                Preference.PreferenceItem.ListPreference(
+                    title = "Sync über",
+                    icon = painterResource(R.drawable.cloud_2),
+                    preference = settings.sync.mode,
+                    entries = mapOf(
+                        CloudSync.MODE_GIST to "GitHub Gist (kein Server nötig)",
+                        CloudSync.MODE_SERVER to "Eigener Server",
+                    ),
+                ),
                 Preference.PreferenceItem.EditTextPreference(
                     title = "Server-Adresse",
-                    subtitle = "%s",
+                    subtitle = if (syncIsServer) "%s" else "Nur für «Eigener Server»",
+                    enabled = syncIsServer,
                     preference = settings.sync.url,
                     onValueChanged = { v ->
                         val t = v.trim()
@@ -157,7 +169,7 @@ object SettingsGeneralScreen : SearchableSettings {
                     },
                 ),
                 Preference.PreferenceItem.EditTextPreference(
-                    title = "Zugangs-Token",
+                    title = if (syncIsServer) "Zugangs-Token" else "GitHub-Token (Berechtigung «gist»)",
                     subtitle = if (syncToken.isBlank()) "Nicht gesetzt" else "Gesetzt (${syncToken.length} Zeichen)",
                     preference = settings.sync.token,
                 ),

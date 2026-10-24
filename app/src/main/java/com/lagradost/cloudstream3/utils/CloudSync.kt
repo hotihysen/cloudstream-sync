@@ -24,20 +24,24 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.UUID
 
 /**
  * Cloud-Sync: gleicht Wiedergabeposition, «Weiterschauen»-Liste, Titel-Infos und
- * Gesehen-Markierungen über einen eigenen Server zwischen Geräten ab.
+ * Gesehen-Markierungen zwischen Geräten ab.
  *
- * Funktionsweise
- * - Lokale Änderungen werden über [markDirty] vorgemerkt und gebündelt hochgeladen
- *   (spätestens [PUSH_DELAY_MS] nach der ersten Änderung sowie beim Verlassen der App).
- * - Beim Öffnen der App und vor dem Laden von «Weiterschauen» werden neue Einträge
- *   vom Server geholt ([pull]). Es gewinnt jeweils der jüngste Stand (Zeitstempel).
- * - Übertragen werden die Rohwerte (JSON) aus dem Cloudstream-Speicher; die IDs sind
- *   auf allen Geräten gleich, solange dieselben Erweiterungen installiert sind.
+ * Zwei Varianten (Einstellung «Sync über»):
+ * - GitHub Gist: Ein privater Gist im GitHub-Konto. Jedes Gerät schreibt nur seine eigene
+ *   Datei «device-<id>-p<profil>.json» und liest die Dateien der anderen Geräte. Dadurch
+ *   können sich Geräte nie gegenseitig überschreiben. Der Gist wird anhand der Datei
+ *   «cloudstream-sync.json» gefunden oder beim ersten Mal automatisch angelegt.
+ * - Eigener Server: siehe Ordner sync-server.
+ *
+ * Lokale Änderungen werden über [markDirty] vorgemerkt und gebündelt hochgeladen. Beim
+ * Öffnen der App, jede Minute im Vordergrund und vor dem Laden von «Weiterschauen» wird
+ * geholt. Es gewinnt jeweils der jüngste Stand (Zeitstempel).
  */
 object CloudSync {
     private const val TAG = "CloudSync"
@@ -48,13 +52,26 @@ object CloudSync {
     private const val KEY_PENDING = "pending"
     private const val KEY_LAST_OK = "last_ok"
     private const val KEY_LAST_ERROR = "last_error"
+    private const val KEY_GIST_ID = "gist_id"
+    private const val KEY_GIST_OWNER = "gist_owner"
+    private const val KEY_GIST_OWN = "gist_own"
+    private const val KEY_GIST_OWN_FOR = "gist_own_for"
     private const val TIME_PREFIX = "t/"
 
-    private const val PUSH_DELAY_MS = 8_000L
-    private const val PULL_MIN_INTERVAL_MS = 5_000L
-    private const val NET_TIMEOUT_MS = 6_000L
+    const val MODE_GIST = "gist"
+    const val MODE_SERVER = "server"
 
-    /** Logische Schlüsseltypen; der Server kennt nur «typ/id». */
+    private const val GITHUB_API = "https://api.github.com"
+    private const val GIST_MARKER = "cloudstream-sync.json"
+    private val JSON_TYPE = "application/json; charset=utf-8".toMediaType()
+
+    private const val PUSH_DELAY_SERVER_MS = 8_000L
+    private const val PUSH_DELAY_GIST_MS = 30_000L
+    private const val PULL_MIN_INTERVAL_MS = 5_000L
+    private const val NET_TIMEOUT_MS = 10_000L
+    private const val FOREGROUND_PULL_MS = 60_000L
+
+    /** Logische Schlüsseltypen «typ/id». */
     private const val T_POS = "pos"        // Wiedergabeposition einer Episode / eines Films
     private const val T_RESUME = "resume"  // Eintrag in «Weiterschauen» (pro Serie/Film)
     private const val T_HEADER = "header"  // Titel, Poster, URL, Anbieter (für die Kachel)
@@ -80,9 +97,45 @@ object CloudSync {
         @JsonProperty("records") @SerialName("records") val records: List<Record> = emptyList(),
     )
 
+    // --- GitHub Gist
+
+    @Serializable
+    data class GistFile(
+        @JsonProperty("filename") @SerialName("filename") val filename: String? = null,
+        @JsonProperty("content") @SerialName("content") val content: String? = null,
+        @JsonProperty("truncated") @SerialName("truncated") val truncated: Boolean = false,
+        @JsonProperty("raw_url") @SerialName("raw_url") val rawUrl: String? = null,
+    )
+
+    @Serializable
+    data class Gist(
+        @JsonProperty("id") @SerialName("id") val id: String,
+        @JsonProperty("files") @SerialName("files") val files: Map<String, GistFile> = emptyMap(),
+    )
+
+    @Serializable
+    data class GistContent(
+        @JsonProperty("content") @SerialName("content") val content: String,
+    )
+
+    @Serializable
+    data class GistWrite(
+        @JsonProperty("description") @SerialName("description") val description: String? = null,
+        @JsonProperty("public") @SerialName("public") val public: Boolean? = null,
+        @JsonProperty("files") @SerialName("files") val files: Map<String, GistContent>,
+    )
+
+    @Serializable
+    data class DeviceFile(
+        @JsonProperty("device") @SerialName("device") val device: String = "",
+        @JsonProperty("updated") @SerialName("updated") val updated: Long = 0,
+        @JsonProperty("records") @SerialName("records") val records: Map<String, Record> = emptyMap(),
+    )
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val lock = Mutex()
     private var pushJob: Job? = null
+    private var foregroundJob: Job? = null
     @Volatile private var lastPull = 0L
 
     // ---------------------------------------------------------------- Einstellungen
@@ -91,15 +144,30 @@ object CloudSync {
 
     private fun settings(ctx: Context) = AppSettings(ctx).sync
 
+    private fun mode(ctx: Context) =
+        if (settings(ctx).mode.get() == MODE_SERVER) MODE_SERVER else MODE_GIST
+
+    private fun token(ctx: Context) = settings(ctx).token.get().trim()
+
     fun isEnabled(ctx: Context? = context): Boolean {
         ctx ?: return false
         val s = settings(ctx)
-        return s.enabled.get() && s.url.get().isNotBlank() && s.token.get().isNotBlank()
+        if (!s.enabled.get() || token(ctx).isBlank()) return false
+        return mode(ctx) == MODE_GIST || s.url.get().isNotBlank()
     }
 
     private fun baseUrl(ctx: Context) = settings(ctx).url.get().trim().trimEnd('/')
-    private fun authHeaders(ctx: Context) = mapOf(
-        "Authorization" to "Bearer ${settings(ctx).token.get().trim()}",
+
+    private fun serverHeaders(ctx: Context) = mapOf(
+        "Authorization" to "Bearer ${token(ctx)}",
+        "Content-Type" to "application/json",
+        "Cache-Control" to "no-cache",
+    )
+
+    private fun githubHeaders(ctx: Context) = mapOf(
+        "Authorization" to "Bearer ${token(ctx)}",
+        "Accept" to "application/vnd.github+json",
+        "X-GitHub-Api-Version" to "2022-11-28",
         "Content-Type" to "application/json",
         "Cache-Control" to "no-cache",
     )
@@ -116,7 +184,7 @@ object CloudSync {
 
     /** Server oder Token geändert: von vorne synchronisieren. */
     private fun seqOwner(ctx: Context) =
-        "${baseUrl(ctx)}|${settings(ctx).token.get().trim()}|${DataStoreHelper.currentAccount}"
+        "${baseUrl(ctx)}|${token(ctx)}|${DataStoreHelper.currentAccount}"
 
     private fun lastSeq(ctx: Context): Long {
         val p = prefs(ctx)
@@ -150,6 +218,13 @@ object CloudSync {
         } else {
             putString(KEY_LAST_ERROR, error)
         }
+    }
+
+    private fun httpError(code: Int): String = when (code) {
+        401 -> "Token ungültig oder abgelaufen"
+        403 -> "Kein Zugriff (Token-Berechtigung «gist» fehlt?) oder Limit erreicht"
+        404 -> "Nicht gefunden"
+        else -> "HTTP $code"
     }
 
     // ---------------------------------------------------------------- Speicherorte
@@ -195,13 +270,14 @@ object CloudSync {
         } catch (t: Throwable) {
             logError(t)
         }
-        schedulePush()
+        schedulePush(ctx)
     }
 
-    private fun schedulePush() {
+    private fun schedulePush(ctx: Context) {
         if (pushJob?.isActive == true) return
+        val wait = if (mode(ctx) == MODE_GIST) PUSH_DELAY_GIST_MS else PUSH_DELAY_SERVER_MS
         pushJob = scope.launch {
-            delay(PUSH_DELAY_MS)
+            delay(wait)
             push()
         }
     }
@@ -232,14 +308,8 @@ object CloudSync {
 
         val ok = try {
             withTimeoutOrNull(NET_TIMEOUT_MS) {
-                app.post(
-                    "${baseUrl(ctx)}/v1/push",
-                    headers = authHeaders(ctx),
-                    requestBody = PushBody(deviceId(ctx), records).toJson().toRequestBody(),
-                ).let { res ->
-                    if (!res.isSuccessful) throw IllegalStateException("HTTP ${res.code}")
-                    true
-                }
+                if (mode(ctx) == MODE_GIST) gistPush(ctx, records) else serverPush(ctx, records)
+                true
             } ?: throw IllegalStateException("Zeitüberschreitung")
         } catch (t: Throwable) {
             Log.w(TAG, "push failed", t)
@@ -257,10 +327,19 @@ object CloudSync {
         ok
     }
 
+    private suspend fun serverPush(ctx: Context, records: List<Record>) {
+        val res = app.post(
+            "${baseUrl(ctx)}/v1/push",
+            headers = serverHeaders(ctx),
+            requestBody = PushBody(deviceId(ctx), records).toJson().toRequestBody(JSON_TYPE),
+        )
+        if (!res.isSuccessful) throw IllegalStateException(httpError(res.code))
+    }
+
     // ---------------------------------------------------------------- Download
 
     /**
-     * Holt neue Einträge vom Server und schreibt sie in den lokalen Speicher.
+     * Holt neue Einträge und schreibt sie in den lokalen Speicher.
      * @param notify Startseite neu laden, wenn sich etwas geändert hat
      * @return Anzahl übernommener Einträge, oder null bei Fehler / deaktiviert
      */
@@ -276,36 +355,20 @@ object CloudSync {
 
         return lock.withLock {
             try {
-                val since = lastSeq(ctx)
-                val body = withTimeoutOrNull(NET_TIMEOUT_MS) {
-                    val res = app.get(
-                        "${baseUrl(ctx)}/v1/pull?since=$since&_=$nowMs",
-                        headers = authHeaders(ctx),
-                    )
-                    if (!res.isSuccessful) throw IllegalStateException("HTTP ${res.code}")
-                    res.text
+                val gist = mode(ctx) == MODE_GIST
+                var newSeq: Long? = null
+                val records = withTimeoutOrNull(NET_TIMEOUT_MS * 2) {
+                    if (gist) {
+                        gistFetch(ctx)
+                    } else {
+                        val r = serverFetch(ctx, lastSeq(ctx), nowMs)
+                        newSeq = r.seq
+                        r.records
+                    }
                 } ?: throw IllegalStateException("Zeitüberschreitung")
 
-                val response = parseJson<PullResponse>(body)
-                val p = prefs(ctx)
-                val pending = p.getStringSet(KEY_PENDING, emptySet())!!
-                val store = ctx.getSharedPrefs()
-                var applied = 0
-
-                store.edit {
-                    val times = p.edit()
-                    for (r in response.records) {
-                        val path = storagePath(r.k) ?: continue
-                        val localT = p.getLong(TIME_PREFIX + r.k, 0)
-                        // Lokal neuer oder noch nicht hochgeladen: lokalen Stand behalten
-                        if (r.t <= localT || (r.k in pending && localT >= r.t)) continue
-                        if (r.d || r.v == null) remove(path) else putString(path, r.v)
-                        times.putLong(TIME_PREFIX + r.k, r.t)
-                        applied++
-                    }
-                    times.apply()
-                }
-                setLastSeq(ctx, response.seq)
+                val applied = applyRecords(ctx, records)
+                newSeq?.let { setLastSeq(ctx, it) }
                 setStatus(ctx, null)
 
                 if (applied > 0 && notify) {
@@ -324,8 +387,164 @@ object CloudSync {
         }
     }
 
-    private var foregroundJob: Job? = null
-    private const val FOREGROUND_PULL_MS = 60_000L
+    private suspend fun serverFetch(ctx: Context, since: Long, nowMs: Long): PullResponse {
+        val res = app.get(
+            "${baseUrl(ctx)}/v1/pull?since=$since&_=$nowMs",
+            headers = serverHeaders(ctx),
+        )
+        if (!res.isSuccessful) throw IllegalStateException(httpError(res.code))
+        return parseJson<PullResponse>(res.text)
+    }
+
+    /** Übernimmt Einträge, die neuer sind als der lokale Stand. */
+    private fun applyRecords(ctx: Context, records: List<Record>): Int {
+        if (records.isEmpty()) return 0
+        val p = prefs(ctx)
+        val store = ctx.getSharedPrefs()
+        var applied = 0
+        store.edit {
+            val times = p.edit()
+            for (r in records) {
+                val path = storagePath(r.k) ?: continue
+                val localT = p.getLong(TIME_PREFIX + r.k, 0)
+                if (r.t <= localT) continue // lokal gleich alt oder neuer
+                if (r.d || r.v == null) remove(path) else putString(path, r.v)
+                times.putLong(TIME_PREFIX + r.k, r.t)
+                applied++
+            }
+            times.apply()
+        }
+        return applied
+    }
+
+    // ---------------------------------------------------------------- GitHub Gist
+
+    private fun ownFileName(ctx: Context) =
+        "device-${deviceId(ctx)}-p${DataStoreHelper.currentAccount}.json"
+
+    private fun isProfileFile(name: String) =
+        name.startsWith("device-") && name.endsWith("-p${DataStoreHelper.currentAccount}.json")
+
+    /** Gist-ID passend zum aktuellen Token; sucht den Gist oder legt ihn an. */
+    private suspend fun gistId(ctx: Context): String {
+        val p = prefs(ctx)
+        val owner = token(ctx).hashCode().toString()
+        val cached = p.getString(KEY_GIST_ID, null)
+        if (cached != null && p.getString(KEY_GIST_OWNER, null) == owner) return cached
+
+        var found: String? = null
+        for (page in 1..5) {
+            val res = app.get("$GITHUB_API/gists?per_page=100&page=$page", headers = githubHeaders(ctx))
+            if (!res.isSuccessful) throw IllegalStateException(httpError(res.code))
+            val list = parseJson<List<Gist>>(res.text)
+            found = list.firstOrNull { it.files.containsKey(GIST_MARKER) }?.id
+            if (found != null || list.size < 100) break
+        }
+
+        val id = found ?: run {
+            val body = GistWrite(
+                description = "CloudStream Sync (nicht löschen)",
+                public = false,
+                files = mapOf(
+                    GIST_MARKER to GistContent(
+                        """{"app":"CloudStream Sync","info":"Sync-Daten deiner Geräte. Jedes Gerät schreibt eine eigene device-Datei."}"""
+                    )
+                )
+            )
+            val res = app.post(
+                "$GITHUB_API/gists",
+                headers = githubHeaders(ctx),
+                requestBody = body.toJson().toRequestBody(JSON_TYPE),
+            )
+            if (!res.isSuccessful) throw IllegalStateException(httpError(res.code))
+            parseJson<Gist>(res.text).id
+        }
+
+        p.edit {
+            putString(KEY_GIST_ID, id)
+            putString(KEY_GIST_OWNER, owner)
+        }
+        return id
+    }
+
+    /** Eigene Datei: lokal gespiegelt, damit zum Hochladen kein Abruf nötig ist. */
+    private fun loadOwn(ctx: Context, gistId: String): MutableMap<String, Record> {
+        val p = prefs(ctx)
+        val forKey = "$gistId|${DataStoreHelper.currentAccount}"
+        if (p.getString(KEY_GIST_OWN_FOR, null) != forKey) return mutableMapOf()
+        val raw = p.getString(KEY_GIST_OWN, null) ?: return mutableMapOf()
+        return try {
+            parseJson<DeviceFile>(raw).records.toMutableMap()
+        } catch (t: Throwable) {
+            logError(t)
+            mutableMapOf()
+        }
+    }
+
+    private suspend fun gistPush(ctx: Context, records: List<Record>) {
+        val id = gistId(ctx)
+        val own = loadOwn(ctx, id)
+        for (r in records) {
+            val cur = own[r.k]
+            if (cur == null || r.t >= cur.t) own[r.k] = r
+        }
+        val file = DeviceFile(deviceId(ctx), System.currentTimeMillis(), own)
+        val content = file.toJson()
+        val body = GistWrite(files = mapOf(ownFileName(ctx) to GistContent(content)))
+        val res = app.patch(
+            "$GITHUB_API/gists/$id",
+            headers = githubHeaders(ctx),
+            requestBody = body.toJson().toRequestBody(JSON_TYPE),
+        )
+        if (res.code == 404) {
+            // Gist wurde gelöscht: beim nächsten Mal neu suchen bzw. anlegen
+            prefs(ctx).edit { remove(KEY_GIST_ID) }
+        }
+        if (!res.isSuccessful) throw IllegalStateException(httpError(res.code))
+        prefs(ctx).edit {
+            putString(KEY_GIST_OWN, content)
+            putString(KEY_GIST_OWN_FOR, "$id|${DataStoreHelper.currentAccount}")
+        }
+    }
+
+    /** Liest die Dateien aller anderen Geräte (gleiches Profil) und liefert den jüngsten Stand je Eintrag. */
+    private suspend fun gistFetch(ctx: Context): List<Record> {
+        val id = gistId(ctx)
+        val res = app.get(
+            "$GITHUB_API/gists/$id?_=${System.currentTimeMillis()}",
+            headers = githubHeaders(ctx),
+        )
+        if (res.code == 404) prefs(ctx).edit { remove(KEY_GIST_ID) }
+        if (!res.isSuccessful) throw IllegalStateException(httpError(res.code))
+        val gist = parseJson<Gist>(res.text)
+        val own = ownFileName(ctx)
+
+        val newest = HashMap<String, Record>()
+        for ((name, f) in gist.files) {
+            if (name == own || !isProfileFile(name)) continue
+            val text = if (!f.truncated && f.content != null) {
+                f.content
+            } else {
+                val url = f.rawUrl ?: continue
+                val raw = app.get(url, headers = mapOf("Authorization" to "Bearer ${token(ctx)}"))
+                if (!raw.isSuccessful) continue
+                raw.text
+            }
+            val device = try {
+                parseJson<DeviceFile>(text)
+            } catch (t: Throwable) {
+                logError(t)
+                continue
+            }
+            for (r in device.records.values) {
+                val cur = newest[r.k]
+                if (cur == null || r.t > cur.t) newest[r.k] = r
+            }
+        }
+        return newest.values.toList()
+    }
+
+    // ---------------------------------------------------------------- Lebenszyklus
 
     /**
      * Beim Öffnen der App sofort holen und danach jede Minute, solange die App sichtbar ist.
@@ -350,7 +569,7 @@ object CloudSync {
 
     /**
      * Lädt den gesamten lokalen Stand hoch (nach dem ersten Einrichten sinnvoll),
-     * danach wird vom Server geholt.
+     * danach wird geholt.
      */
     suspend fun fullSync(): Int? {
         val ctx = context ?: return null
@@ -375,7 +594,8 @@ object CloudSync {
         val pending = p.getStringSet(KEY_PENDING, emptySet())!!.toMutableSet()
         p.edit {
             keys.forEach { k ->
-                if (!p.contains(TIME_PREFIX + k)) putLong(TIME_PREFIX + k, 1L) // alter Stand: verliert gegen jede echte Änderung
+                // alter Stand ohne Zeitstempel: verliert gegen jede echte Änderung
+                if (!p.contains(TIME_PREFIX + k)) putLong(TIME_PREFIX + k, 1L)
             }
             pending.addAll(keys)
             putStringSet(KEY_PENDING, pending)
@@ -387,18 +607,28 @@ object CloudSync {
     /** Verbindung prüfen; liefert null bei Erfolg, sonst eine Fehlermeldung. */
     suspend fun testConnection(): String? {
         val ctx = context ?: return "Kein Kontext"
-        val s = settings(ctx)
-        if (s.url.get().isBlank()) return "Server-Adresse fehlt"
-        if (s.token.get().isBlank()) return "Token fehlt"
+        if (token(ctx).isBlank()) return "Token fehlt"
+        // "" = Erfolg, null = Zeitüberschreitung
         return try {
-            withTimeoutOrNull(NET_TIMEOUT_MS) {
-                val res = app.get("${baseUrl(ctx)}/v1/ping?_=${System.currentTimeMillis()}", headers = authHeaders(ctx))
-                when {
-                    res.code == 401 -> "Token ungültig"
-                    !res.isSuccessful -> "HTTP ${res.code}"
-                    else -> null
+            val result: String? = withTimeoutOrNull(NET_TIMEOUT_MS * 2) {
+                if (mode(ctx) == MODE_GIST) {
+                    gistId(ctx)
+                    ""
+                } else if (settings(ctx).url.get().isBlank()) {
+                    "Server-Adresse fehlt"
+                } else {
+                    val res = app.get(
+                        "${baseUrl(ctx)}/v1/ping?_=${System.currentTimeMillis()}",
+                        headers = serverHeaders(ctx)
+                    )
+                    if (res.isSuccessful) "" else httpError(res.code)
                 }
-            } ?: "Zeitüberschreitung"
+            }
+            when (result) {
+                null -> "Zeitüberschreitung"
+                "" -> null
+                else -> result
+            }
         } catch (t: Throwable) {
             t.message ?: t.javaClass.simpleName
         }
