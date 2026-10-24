@@ -1,6 +1,6 @@
 # Flimmer: Anleitung
 
-Fork von CloudStream mit einer zusätzlichen Funktion: Wiedergabeposition, «Weiterschauen»-Liste und Gesehen-Markierungen werden zwischen Handy und Android-TV abgeglichen. Erweiterungen und Repo-JSON funktionieren wie im Original. Die App heisst «Flimmer» und ist eigenständig; sie installiert sich neben einem vorhandenen CloudStream und holt Updates aus diesem Repository (Einstellungen, Updates, «Nach Updates suchen").
+Fork von CloudStream mit einer zusätzlichen Funktion: Wiedergabeposition, «Weiterschauen»-Liste und Gesehen-Markierungen werden zwischen Handy und Android-TV abgeglichen. Erweiterungen und Repo-JSON funktionieren wie im Original. Die App heisst «Flimmer» und ist eigenständig; sie installiert sich neben einem vorhandenen CloudStream und holt Updates aus diesem Repository (Einstellungen, Updates, «Nach Updates suchen»).
 
 ## APK herunterladen
 
