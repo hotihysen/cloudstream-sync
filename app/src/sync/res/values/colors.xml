@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Flimmer: Akzentfarbe aus dem Symbol (Standard-Farbschema «Normal») -->
+    <color name="colorPrimary">#FF7A4D</color>
+    <color name="colorPrimaryDark">#C2410C</color>
+    <color name="colorAccent">#FF7A4D</color>
+</resources>

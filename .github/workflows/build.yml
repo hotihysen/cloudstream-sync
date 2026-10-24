@@ -51,6 +51,10 @@ jobs:
           chmod +x gradlew
           set -o pipefail
           ./gradlew :app:assembleSyncRelease --no-daemon --console=plain 2>&1 | tee build.log
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          FLIMMER_TRAKT_ID: ${{ secrets.FLIMMER }}
+          FLIMMER_TRAKT_SECRET: ${{ secrets.TRAKT_CLIENT_SECRET }}
 
       - name: Fehler als Hinweis ausgeben
         if: failure()

@@ -154,6 +154,10 @@ android {
             "\"" + (System.getenv("ANILIST_KEY") ?: localProperties["anilist.key"]) + "\""
         )
         buildConfigField("int", "FLIMMER_BUILD", "0")
+        // Flimmer: Schlüssel kommen beim GitHub-Build aus den Repository-Secrets
+        buildConfigField("String", "TMDB_API_KEY", "\"" + (System.getenv("TMDB_API_KEY") ?: "") + "\"")
+        buildConfigField("String", "FLIMMER_TRAKT_ID", "\"" + (System.getenv("FLIMMER_TRAKT_ID") ?: "") + "\"")
+        buildConfigField("String", "FLIMMER_TRAKT_SECRET", "\"" + (System.getenv("FLIMMER_TRAKT_SECRET") ?: "") + "\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

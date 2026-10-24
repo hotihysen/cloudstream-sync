@@ -125,6 +125,7 @@ import com.lagradost.cloudstream3.ui.settings.Globals.updateTv
 import com.lagradost.cloudstream3.ui.settings.SettingsGeneral
 import com.lagradost.cloudstream3.ui.setup.HAS_DONE_SETUP_KEY
 import com.lagradost.cloudstream3.ui.setup.SetupFragmentExtensions
+import com.lagradost.cloudstream3.flimmer.FlimmerKatalog
 import com.lagradost.cloudstream3.utils.CloudSync
 import com.lagradost.cloudstream3.utils.ApkInstaller
 import com.lagradost.cloudstream3.utils.AppContextUtils.getApiDubstatusSettings
@@ -1667,6 +1668,20 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
         }
 
         SearchResultBuilder.updateCache(this)
+
+        // Flimmer Katalog: eingebaute Gesamtübersicht (TMDB, Deutsch) über alle Erweiterungen
+        try {
+            if (FlimmerKatalog.isConfigured && allProviders.none { it is FlimmerKatalog }) {
+                val katalog = FlimmerKatalog()
+                allProviders.add(katalog)
+                APIHolder.addPluginMapping(katalog)
+                if (DataStoreHelper.currentHomePage == null) {
+                    DataStoreHelper.currentHomePage = FlimmerKatalog.NAME
+                }
+            }
+        } catch (t: Throwable) {
+            logError(t)
+        }
 
         ioSafe {
             initAll()
