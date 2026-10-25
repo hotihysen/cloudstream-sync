@@ -12,7 +12,7 @@ import kotlinx.serialization.Serializable
 class IntroDbSkip : SkipAPI() {
     override val name = "IntroDb"
 
-    override val supportedTypes = setOf(TvType.TvSeries, TvType.AsianDrama)
+    override val supportedTypes = setOf(TvType.TvSeries, TvType.AsianDrama, TvType.Anime, TvType.Cartoon)
 
     override suspend fun stamps(
         data: LoadResponse,

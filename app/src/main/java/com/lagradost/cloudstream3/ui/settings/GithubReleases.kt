@@ -27,6 +27,7 @@ object GithubReleases : GithubRepository {
         @JsonProperty("prerelease") @SerialName("prerelease") val prerelease: Boolean,
         @JsonProperty("node_id") @SerialName("node_id") val nodeId: String,
         @JsonProperty("created_at") @SerialName("created_at") val createdAt: String, // YYYY-MM-DDTHH:MM:SSZ
+        @JsonProperty("name") @SerialName("name") val name: String? = null,
     )
 
     @Serializable
@@ -100,8 +101,10 @@ object GithubReleases : GithubRepository {
             digest = foundAsset.digest,
             downloadUrl = foundAsset.browserDownloadUrl,
             // Flimmer: Tag «build-<n>» entspricht versionName «Flimmer-<n>» (Vergleich im GithubViewModel)
+            // Flimmer: Release-Name «Flimmer 16.4 · Build 17» entspricht versionName «16.4 · Build 17»
             displayName = if (userName == FLIMMER_USERNAME) {
-                "Flimmer-" + latestRelease.tagName.removePrefix("build-")
+                latestRelease.name?.removePrefix("Flimmer ")
+                    ?: ("Build " + latestRelease.tagName.removePrefix("build-"))
             } else {
                 foundAsset.name.substringBeforeLast(".")
             },

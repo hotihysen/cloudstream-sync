@@ -71,7 +71,7 @@ jobs:
         run: |
           APK=$(ls app/build/outputs/apk/sync/release/*.apk | head -n1)
           cp "$APK" Flimmer.apk
-          echo "version=$(date -u +%Y.%m.%d)-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "version=$(cat flimmer-version.txt | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
 
       - name: Als Build-Artefakt speichern
         uses: actions/upload-artifact@v5
@@ -83,7 +83,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: Flimmer Build ${{ github.run_number }}
-          body: Automatisch gebaut aus ${{ github.sha }}
+          name: Flimmer ${{ steps.apk.outputs.version }} · Build ${{ github.run_number }}
+          body_path: flimmer-changes.md
           files: Flimmer.apk
           make_latest: true

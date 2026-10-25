@@ -23,6 +23,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import okhttp3.MediaType.Companion.toMediaType
@@ -202,6 +203,12 @@ class TraktApi : SyncAPI() {
     )
 
     @Serializable
+    data class Progress(
+        @JsonProperty("aired") @SerialName("aired") val aired: Int = 0,
+        @JsonProperty("completed") @SerialName("completed") val completed: Int = 0,
+    )
+
+    @Serializable
     data class SearchHit(
         @JsonProperty("type") @SerialName("type") val type: String? = null,
         @JsonProperty("movie") @SerialName("movie") val movie: Media? = null,
@@ -293,6 +300,8 @@ class TraktApi : SyncAPI() {
         val watchedShows: List<ListEntry>,
         val ratings: List<ListEntry>,
         val favorites: List<ListEntry>,
+        /** Trakt-ID der Serie → (ausgestrahlt, gesehen), wie Trakt selbst es zählt */
+        val progress: Map<Int, Progress>,
         val time: Long,
     )
 
@@ -327,18 +336,63 @@ class TraktApi : SyncAPI() {
             val rS = async { fetchList("/sync/ratings/shows", token) }
             val fM = async { fetchList("/sync/favorites/movies?extended=full,images", token) }
             val fS = async { fetchList("/sync/favorites/shows?extended=full,images", token) }
+            val shows = wS.await()
             Lists(
                 watchlist = wlM.await() + wlS.await(),
                 watchedMovies = wM.await(),
-                watchedShows = wS.await(),
+                watchedShows = shows,
                 ratings = rM.await() + rS.await(),
                 favorites = fM.await() + fS.await(),
+                progress = progressFor(shows, token),
                 time = System.currentTimeMillis(),
             )
         }
         cache = token to l
         l
     }
+
+    // ------------------------------------------------------------------ Fortschritt pro Serie
+
+    private val progressSemaphore = kotlinx.coroutines.sync.Semaphore(6)
+    private val progressFolder = "flimmer_trakt_progress"
+
+    /**
+     * Fragt für jede gesehene Serie den Fortschritt bei Trakt ab (ausgestrahlte vs. gesehene Folgen).
+     * Zwischengespeichert pro Serie und «zuletzt gesehen»-Zeitpunkt: neu geladen wird nur,
+     * wenn seither etwas geschaut wurde oder der Eintrag älter als ein Tag ist.
+     */
+    private suspend fun progressFor(shows: List<ListEntry>, token: String): Map<Int, Progress> = coroutineScope {
+        val now = System.currentTimeMillis()
+        shows.mapNotNull { entry ->
+            val id = entry.show?.ids?.trakt ?: return@mapNotNull null
+            val stamp = entry.lastWatchedAt ?: ""
+            async {
+                val cached = com.lagradost.cloudstream3.CloudStreamApp.getKey<String>(progressFolder, id.toString())
+                    ?.split("|")
+                if (cached != null && cached.size == 4 && cached[0] == stamp &&
+                    now - (cached[3].toLongOrNull() ?: 0L) < 24 * 3600_000L
+                ) {
+                    return@async id to Progress(cached[1].toInt(), cached[2].toInt())
+                }
+                progressSemaphore.withPermit {
+                    try {
+                        val res = get("/shows/$id/progress/watched?hidden=false&specials=false&count_specials=false", token)
+                        if (!res.isSuccessful) return@withPermit null
+                        val p = parseJson<Progress>(res.text)
+                        com.lagradost.cloudstream3.CloudStreamApp.setKey(
+                            progressFolder, id.toString(), "$stamp|${p.aired}|${p.completed}|$now"
+                        )
+                        id to p
+                    } catch (t: Throwable) {
+                        Log.w(TAG, "progress $id", t)
+                        null
+                    }
+                }
+            }
+        }.mapNotNull { it.await() }.toMap()
+    }
+
+    private fun isComplete(p: Progress?) = p != null && p.aired > 0 && p.completed >= p.aired
 
     // ------------------------------------------------------------------ Status
 
@@ -354,10 +408,11 @@ class TraktApi : SyncAPI() {
 
         val (status, watched, max) = if (tid.isShow) {
             val w = l.watchedShows.find()
-            val count = w?.watchedEpisodes() ?: 0
-            val aired = w?.show?.airedEpisodes ?: inWatchlist?.show?.airedEpisodes
+            val p = w?.show?.ids?.trakt?.let { l.progress[it] }
+            val count = p?.completed ?: w?.watchedEpisodes() ?: 0
+            val aired = p?.aired ?: w?.show?.airedEpisodes ?: inWatchlist?.show?.airedEpisodes
             val st = when {
-                w != null && aired != null && aired > 0 && count >= aired -> SyncWatchType.COMPLETED
+                w != null && (isComplete(p) || (p == null && aired != null && aired > 0 && count >= aired)) -> SyncWatchType.COMPLETED
                 count > 0 -> SyncWatchType.WATCHING
                 inWatchlist != null -> SyncWatchType.PLANTOWATCH
                 else -> SyncWatchType.NONE
@@ -516,7 +571,12 @@ class TraktApi : SyncAPI() {
         Calendar.getInstance().apply { clear(); set(Calendar.YEAR, it) }.time
     }
 
-    private fun ListEntry.toLibraryItem(ratings: Map<String, Int>, completed: Int? = null, total: Int? = null): LibraryItem? {
+    private fun ListEntry.toLibraryItem(
+        ratings: Map<String, Int>,
+        posters: Map<String, String>,
+        completed: Int? = null,
+        total: Int? = null,
+    ): LibraryItem? {
         val m = media ?: return null
         val tmdb = m.ids.tmdb ?: return null
         val tid = TraktId(isShow, "tmdb", tmdb.toString())
@@ -530,7 +590,8 @@ class TraktApi : SyncAPI() {
             lastUpdatedUnixTime = parseDate(lastWatchedAt ?: listedAt),
             apiName = FlimmerKatalog.NAME, // öffnet die deutsche Detailseite des Katalogs
             type = if (isShow) TvType.TvSeries else TvType.Movie,
-            posterUrl = image(m.images?.poster?.firstOrNull()),
+            // Deutsches Poster von TMDB, sonst das von Trakt
+            posterUrl = posters[tid.toString()] ?: image(m.images?.poster?.firstOrNull()),
             posterHeaders = null,
             quality = null,
             releaseDate = yearDate(m.year),
@@ -549,21 +610,37 @@ class TraktApi : SyncAPI() {
             TraktId(r.isShow, "tmdb", tmdb.toString()).toString() to rating
         }.toMap()
 
+        // Poster für alle Einträge (parallel, zwischengespeichert)
+        val all = l.watchlist + l.watchedShows + l.watchedMovies + l.favorites
+        val posters = coroutineScope {
+            all.mapNotNull { e -> e.media?.ids?.tmdb?.let { e.isShow to it } }
+                .distinct()
+                .map { (isShow, tmdb) ->
+                    async {
+                        FlimmerKatalog.posterUrl(isShow, tmdb)?.let {
+                            TraktId(isShow, "tmdb", tmdb.toString()).toString() to it
+                        }
+                    }
+                }.mapNotNull { it.await() }.toMap()
+        }
+
         val watching = mutableListOf<LibraryItem>()
         val completed = mutableListOf<LibraryItem>()
         for (s in l.watchedShows) {
-            val count = s.watchedEpisodes()
-            val aired = s.show?.airedEpisodes
-            val item = s.toLibraryItem(ratings, count, aired) ?: continue
-            if (aired != null && aired > 0 && count >= aired) completed += item else watching += item
+            val p = s.show?.ids?.trakt?.let { l.progress[it] }
+            val count = p?.completed ?: s.watchedEpisodes()
+            val aired = p?.aired ?: s.show?.airedEpisodes
+            val item = s.toLibraryItem(ratings, posters, count, aired) ?: continue
+            val done = isComplete(p) || (p == null && aired != null && aired > 0 && count >= aired)
+            if (done) completed += item else watching += item
         }
-        l.watchedMovies.mapNotNullTo(completed) { it.toLibraryItem(ratings, 1, 1) }
+        l.watchedMovies.mapNotNullTo(completed) { it.toLibraryItem(ratings, posters, 1, 1) }
 
         val lists = listOf(
-            LibraryList(txt(R.string.type_plan_to_watch), l.watchlist.mapNotNull { it.toLibraryItem(ratings) }),
+            LibraryList(txt(R.string.type_plan_to_watch), l.watchlist.mapNotNull { it.toLibraryItem(ratings, posters) }),
             LibraryList(txt(R.string.type_watching), watching),
             LibraryList(txt(R.string.type_completed), completed),
-            LibraryList(txt(R.string.favorites_list_name), l.favorites.mapNotNull { it.toLibraryItem(ratings) }),
+            LibraryList(txt(R.string.favorites_list_name), l.favorites.mapNotNull { it.toLibraryItem(ratings, posters) }),
         )
         return LibraryMetadata(
             lists,

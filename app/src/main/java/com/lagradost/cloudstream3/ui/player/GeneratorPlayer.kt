@@ -1772,6 +1772,9 @@ class GeneratorPlayer : FullScreenPlayer() {
                 }
 
                 if (meta.tvType.isAnimeOp()) isOpVisible = percentage < SKIP_OP_VIDEO_PERCENTAGE
+                // Flimmer: «Intro überspringen» (+85 s) auch bei Serien, in den ersten 10 Minuten
+                else if (meta.tvType in setOf(TvType.TvSeries, TvType.Cartoon, TvType.AsianDrama, TvType.Documentary))
+                    isOpVisible = position < 600_000L
             }
         }
 

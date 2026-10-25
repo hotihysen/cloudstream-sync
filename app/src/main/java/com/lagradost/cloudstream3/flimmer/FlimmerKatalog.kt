@@ -46,6 +46,7 @@ import kotlinx.serialization.Serializable
 import okhttp3.Interceptor
 import java.text.Normalizer
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.sync.withPermit
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -67,6 +68,34 @@ class FlimmerKatalog : MainAPI() {
 
         val apiKey: String get() = BuildConfig.TMDB_API_KEY.trim()
         val isConfigured: Boolean get() = apiKey.isNotBlank() && apiKey != "null"
+
+        private const val POSTER_FOLDER = "flimmer_tmdb_poster"
+        private val posterSemaphore = kotlinx.coroutines.sync.Semaphore(8)
+
+        /** Deutsches Poster (sonst Originalposter) eines Titels, dauerhaft zwischengespeichert. */
+        suspend fun posterUrl(isTv: Boolean, tmdbId: Int): String? {
+            if (!isConfigured) return null
+            val key = "${if (isTv) "tv" else "movie"}/$tmdbId"
+            com.lagradost.cloudstream3.CloudStreamApp.getKey<String>(POSTER_FOLDER, key.replace("/", "_"))
+                ?.let { return it.ifEmpty { null } }
+            return posterSemaphore.withPermit {
+                try {
+                    val bearer = apiKey.length > 40
+                    val url = "$API/$key/images?include_image_language=de,en,null" + if (bearer) "" else "&api_key=$apiKey"
+                    val headers = if (bearer) mapOf("Authorization" to "Bearer $apiKey") else emptyMap()
+                    val res = app.get(url, headers = headers)
+                    if (!res.isSuccessful) return@withPermit null
+                    val posters = parseJson<TmdbPosters>(res.text).posters
+                    val pick = posters.firstOrNull { it.lang == "de" } ?: posters.firstOrNull { it.lang == "en" }
+                        ?: posters.firstOrNull()
+                    val result = pick?.let { "$IMG/w342${it.filePath}" }
+                    com.lagradost.cloudstream3.CloudStreamApp.setKey(POSTER_FOLDER, key.replace("/", "_"), result ?: "")
+                    result
+                } catch (t: Throwable) {
+                    null
+                }
+            }
+        }
     }
 
     override var name = NAME
@@ -124,7 +153,10 @@ class FlimmerKatalog : MainAPI() {
     )
 
     @Serializable
-    data class TmdbGenre(@JsonProperty("name") @SerialName("name") val name: String = "")
+    data class TmdbGenre(
+        @JsonProperty("id") @SerialName("id") val id: Int = 0,
+        @JsonProperty("name") @SerialName("name") val name: String = "",
+    )
 
     @Serializable
     data class TmdbCast(
@@ -151,6 +183,9 @@ class FlimmerKatalog : MainAPI() {
         @JsonProperty("file_path") @SerialName("file_path") val filePath: String = "",
         @JsonProperty("iso_639_1") @SerialName("iso_639_1") val lang: String? = null,
     )
+
+    @Serializable
+    data class TmdbPosters(@JsonProperty("posters") @SerialName("posters") val posters: List<TmdbImage> = emptyList())
 
     @Serializable
     data class TmdbImages(@JsonProperty("logos") @SerialName("logos") val logos: List<TmdbImage> = emptyList())
@@ -215,6 +250,7 @@ class FlimmerKatalog : MainAPI() {
         @JsonProperty("name") @SerialName("name") val name: String? = null,
         @JsonProperty("original_title") @SerialName("original_title") val originalTitle: String? = null,
         @JsonProperty("original_name") @SerialName("original_name") val originalName: String? = null,
+        @JsonProperty("original_language") @SerialName("original_language") val originalLanguage: String? = null,
         @JsonProperty("overview") @SerialName("overview") val overview: String? = null,
         @JsonProperty("poster_path") @SerialName("poster_path") val posterPath: String? = null,
         @JsonProperty("backdrop_path") @SerialName("backdrop_path") val backdropPath: String? = null,
@@ -352,10 +388,12 @@ class FlimmerKatalog : MainAPI() {
         val recs = d.recommendations?.results?.mapNotNull { it.toSearch(kind) }
         val cast = d.credits?.cast?.take(20)?.map { Actor(it.name, img(it.profilePath, "w185")) to it.character }
         val alt = altTitles(d, title)
+        // Japanische Animation als Anime kennzeichnen (Sprungmarken über AniSkip, Skip-Knopf im Player)
+        val isAnime = d.originalLanguage == "ja" && d.genres.any { it.id == 16 }
 
         if (!isTv) {
             val link = LinkData(id, false, title, original, year, imdbId = imdb, altTitles = alt)
-            return newMovieLoadResponse(title, url, TvType.Movie, link.toJson()) {
+            return newMovieLoadResponse(title, url, if (isAnime) TvType.AnimeMovie else TvType.Movie, link.toJson()) {
                 posterUrl = img(d.posterPath)
                 backgroundPosterUrl = img(d.backdropPath, "original")
                 logoUrl = logo
@@ -394,7 +432,7 @@ class FlimmerKatalog : MainAPI() {
                 }
             }
         }
-        return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+        return newTvSeriesLoadResponse(title, url, if (isAnime) TvType.Anime else TvType.TvSeries, episodes) {
             posterUrl = img(d.posterPath)
             backgroundPosterUrl = img(d.backdropPath, "original")
             logoUrl = logo

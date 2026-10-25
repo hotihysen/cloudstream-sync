@@ -204,7 +204,9 @@ android {
             applicationId = "ch.hotihysen.flimmer"
             val runNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "0").toInt()
             versionCode = 1000 + runNumber
-            versionName = "Flimmer-$runNumber"
+            // Sichtbare Version aus flimmer-version.txt (z.B. 16.4), Build-Nummer für die Update-Erkennung
+            val flimmerVersion = rootProject.file("flimmer-version.txt").takeIf { it.exists() }?.readText()?.trim() ?: "0"
+            versionName = "$flimmerVersion · Build $runNumber"
             buildConfigField("int", "FLIMMER_BUILD", runNumber.toString())
             signingConfig = signingConfigs.findByName("sync") ?: signingConfigs.getByName("debug")
         }
