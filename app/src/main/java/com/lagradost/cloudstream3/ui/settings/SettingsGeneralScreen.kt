@@ -32,6 +32,7 @@ import com.lagradost.cloudstream3.ui.settings.SettingsProvidersScreen.toStringRe
 import com.lagradost.cloudstream3.utils.BatteryOptimizationChecker.isAppRestricted
 import com.lagradost.cloudstream3.utils.CloudSync
 import com.lagradost.cloudstream3.flimmer.flimmerTraktGroup
+import com.lagradost.cloudstream3.flimmer.flimmerStreamGroup
 import com.lagradost.cloudstream3.utils.BatteryOptimizationChecker.showRequestIgnoreBatteryOptDialog
 import com.lagradost.cloudstream3.utils.SubtitleHelper.fromTagToLanguageName
 import com.lagradost.cloudstream3.utils.SubtitleHelper.getNameNextToFlagEmoji
@@ -208,10 +209,12 @@ object SettingsGeneralScreen : SearchableSettings {
         )
 
         val traktGroup = flimmerTraktGroup()
+        val streamGroup = flimmerStreamGroup()
 
         return persistentListOf(
             cloudSyncGroup,
             traktGroup,
+            streamGroup,
             Preference.PreferenceGroup(title = stringResource(R.string.extension_language), preferenceItems = persistentListOf(
                 Preference.PreferenceItem.ListPreference(
                     preference = settings.general.locale,

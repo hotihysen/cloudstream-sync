@@ -1563,6 +1563,7 @@ class GeneratorPlayer : FullScreenPlayer() {
     }
 
     override fun playerError(exception: Throwable) {
+        com.lagradost.cloudstream3.flimmer.FlimmerStreams.onError(currentSelectedLink?.first)
         currentSelectedLink?.let { link ->
             viewModel.modifyState { this.addError(link) }
         }
@@ -1730,6 +1731,8 @@ class GeneratorPlayer : FullScreenPlayer() {
         if ((currentMeta as? ResultEpisode)?.tvType == TvType.NSFW) return
 
         if (duration <= 0L) return // idk how you achieved this, but div by zero crash
+        // Flimmer: läuft der Stream stabil, als zuverlässig merken
+        if (position > 20_000L) com.lagradost.cloudstream3.flimmer.FlimmerStreams.onPlaying(currentSelectedLink?.first)
         if (!hasRequestedStamps) {
             hasRequestedStamps = true
             val fetchStamps = context?.let { ctx ->

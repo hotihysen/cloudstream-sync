@@ -75,3 +75,29 @@ fun flimmerTraktGroup(): Preference.PreferenceGroup {
         )
     )
 }
+
+/** Einstellungsgruppe «Stream-Auswahl» für den Flimmer Katalog. */
+@Composable
+fun flimmerStreamGroup(): Preference.PreferenceGroup {
+    var lang by remember { mutableStateOf(FlimmerStreams.language) }
+    val order = listOf(FlimmerStreams.LANG_DE, FlimmerStreams.LANG_ORIGINAL, FlimmerStreams.LANG_ANY)
+    return Preference.PreferenceGroup(
+        title = "Stream-Auswahl (Flimmer Katalog)",
+        preferenceItems = persistentListOf(
+            Preference.PreferenceItem.TextPreference(
+                title = "Sprache",
+                subtitle = FlimmerStreams.languageLabel(lang) + " (antippen zum Wechseln)",
+                icon = painterResource(R.drawable.baseline_sync_24),
+                onClick = {
+                    val next = order[(order.indexOf(lang) + 1) % order.size]
+                    lang = next
+                    FlimmerStreams.language = next
+                },
+            ),
+            Preference.PreferenceItem.InfoPreference(
+                title = "Flimmer sortiert Streams nach Sprache, Qualität und danach, welche Quellen bei dir zuverlässig starten. " +
+                        "Nach einem sehr guten Treffer startet die Wiedergabe nach kurzer Zeit, sonst wird bis zu 10 Sekunden auf bessere Quellen gewartet."
+            ),
+        )
+    )
+}

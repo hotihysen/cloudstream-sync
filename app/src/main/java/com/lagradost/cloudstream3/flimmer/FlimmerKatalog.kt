@@ -38,6 +38,10 @@ import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import kotlinx.coroutines.async
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import com.lagradost.cloudstream3.utils.newExtractorLink
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withTimeoutOrNull
@@ -48,6 +52,7 @@ import java.text.Normalizer
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.sync.withPermit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Flimmer Katalog: eine Gesamtübersicht unabhängig von den einzelnen Hosts.
@@ -81,6 +86,10 @@ class FlimmerKatalog(private val animeOnly: Boolean = false) : MainAPI() {
         private const val LANG = "de-DE"
         private const val REGION = "CH"
         private const val PROVIDER_TIMEOUT_MS = 45_000L
+        /** Nach dem ersten Treffer so lange auf bessere Quellen warten */
+        private const val SETTLE_MS = 10_000L
+        /** Nach einem sehr guten Treffer (Deutsch, mind. 1080p) nur noch kurz warten */
+        private const val EXCELLENT_GRACE_MS = 2_500L
 
         val apiKey: String get() = BuildConfig.TMDB_API_KEY.trim()
         val isConfigured: Boolean get() = apiKey.isNotBlank() && apiKey != "null"
@@ -632,6 +641,22 @@ class FlimmerKatalog(private val animeOnly: Boolean = false) : MainAPI() {
         return null
     }
 
+    /** Name der Erweiterung voranstellen, damit in der Auswahl sichtbar ist, woher ein Stream kommt. */
+    private suspend fun withSourceName(api: MainAPI, link: ExtractorLink): ExtractorLink {
+        if (link.javaClass != ExtractorLink::class.java || link.name.startsWith(api.name)) return link
+        return try {
+            newExtractorLink(link.source, "${api.name} · ${link.name}", link.url, link.type) {
+                referer = link.referer
+                quality = link.quality
+                headers = link.headers
+                extractorData = link.extractorData
+                audioTracks = link.audioTracks
+            }
+        } catch (t: Throwable) {
+            link
+        }
+    }
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -647,25 +672,63 @@ class FlimmerKatalog(private val animeOnly: Boolean = false) : MainAPI() {
             .distinctBy { it.name }
 
         val found = AtomicInteger(0)
+        val firstLinkAt = AtomicLong(0)
+        val excellentAt = AtomicLong(0)
+        val incoming = Channel<Pair<MainAPI, ExtractorLink>>(Channel.UNLIMITED)
+
         coroutineScope {
-            providers.map { api ->
-                async {
+            // Alle Erweiterungen gleichzeitig abfragen
+            val jobs = providers.map { api ->
+                launch {
                     withTimeoutOrNull(PROVIDER_TIMEOUT_MS) {
                         try {
                             val match = findMatch(api, d) ?: return@withTimeoutOrNull
                             val load = api.load(match.result.url) ?: return@withTimeoutOrNull
                             val epData = episodeData(load, d, match.seasonEntry) ?: return@withTimeoutOrNull
                             api.loadLinks(epData, isCasting, subtitleCallback) { link ->
-                                linkOwner[link.url] = api
-                                found.incrementAndGet()
-                                callback(link)
+                                incoming.trySend(api to link)
                             }
+                        } catch (t: kotlinx.coroutines.CancellationException) {
+                            throw t
                         } catch (t: Throwable) {
                             Log.w(TAG, "${api.name}: ${t.message}")
                         }
                     }
                 }
-            }.awaitAll()
+            }
+
+            // Links aufbereiten: Qualität ermitteln, Herkunft im Namen, Bewertung registrieren
+            val processor = launch {
+                for ((api, raw) in incoming) {
+                    launch {
+                        FlimmerStreams.probeQuality(raw)
+                        val link = withSourceName(api, raw)
+                        linkOwner[link.url] = api
+                        FlimmerStreams.register(link, api.name, api.lang)
+                        val now = System.currentTimeMillis()
+                        firstLinkAt.compareAndSet(0, now)
+                        if (FlimmerStreams.isExcellent(link)) excellentAt.compareAndSet(0, now)
+                        found.incrementAndGet()
+                        callback(link)
+                    }
+                }
+            }
+
+            // Nicht ewig auf langsame Erweiterungen warten: nach einem sehr guten Treffer kurz,
+            // sonst nach dem ersten Treffer noch einige Sekunden auf bessere Quellen warten
+            while (true) {
+                delay(250)
+                if (jobs.all { it.isCompleted }) break
+                val now = System.currentTimeMillis()
+                val excellent = excellentAt.get()
+                val first = firstLinkAt.get()
+                if (excellent > 0 && now - excellent >= EXCELLENT_GRACE_MS) break
+                if (first > 0 && now - first >= SETTLE_MS) break
+            }
+            jobs.forEach { it.cancel() }
+            incoming.close()
+            withTimeoutOrNull(5_000L) { processor.join() }
+            processor.cancel()
         }
         return found.get() > 0
     }

@@ -1,5 +1,9 @@
-Flimmer 16.5
+Flimmer 16.6
 
-- Neuer Reiter «Flimmer Anime»: Diese Saison, Anime auf Crunchyroll, Netflix, Disney+ und Prime Video, Beliebt, Bestbewertet, Anime-Filme, Genres und Neu erschienen (alles auf Deutsch)
-- Im Flimmer Katalog zusätzlich die Reihe «Anime auf Crunchyroll»
-- Suche im Anime-Reiter zeigt nur Anime
+- Bessere Stream-Auswahl im Flimmer Katalog:
+  - Deutsch bevorzugt (einstellbar: Deutsch, Original mit Untertiteln, keine Bevorzugung)
+  - Unbekannte Qualität wird bei HLS-Streams automatisch ermittelt
+  - Flimmer lernt, welche Quellen bei dir zuverlässig starten, und reiht unzuverlässige nach hinten
+  - Nach einem sehr guten Treffer startet die Wiedergabe sofort, sonst höchstens 10 Sekunden Wartezeit auf bessere Quellen
+  - Name der Erweiterung in der Stream-Auswahl sichtbar
+- Einstellung unter Einstellungen, Allgemein, «Stream-Auswahl»

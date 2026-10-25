@@ -251,7 +251,8 @@ object QualityDataHelper {
         )
         val sourcePriority = getSourcePriority(qualityProfile, linkData?.source)
 
-        return qualityPriority + sourcePriority
+        // Flimmer: Sprache und Zuverlässigkeit bei Links aus dem Katalog
+        return qualityPriority + sourcePriority + com.lagradost.cloudstream3.flimmer.FlimmerStreams.bonus(linkData)
     }
 
     private fun closestQuality(target: Int?): Qualities {
