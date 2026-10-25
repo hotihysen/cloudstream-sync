@@ -170,6 +170,9 @@ object FlimmerStreams {
      */
     @Volatile var startNowListener: (() -> Unit)? = null
 
+    /** Bericht der letzten Quellensuche: welche Erweiterung was gefunden hat */
+    @Volatile var lastReport: String? = null
+
     fun requestStartNow() {
         try {
             startNowListener?.invoke()

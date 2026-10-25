@@ -1,5 +1,4 @@
-Flimmer 17.0 Beta 5
+Flimmer 17.0 Beta 6
 
-- Stream-Auswahl: Sprachangaben im Linknamen haben Vorrang. «[Deutsch]» vor «[Englisch]», auch innerhalb einer deutschen Erweiterung; «Ger-Sub» als deutsche Untertitel erkannt
-- Alle Erweiterungen in der Quellenauswahl: Die Wiedergabe startet weiterhin früh, die übrigen Erweiterungen laden aber im Hintergrund weiter und erscheinen in der Liste
-- Runder Quellen-Knopf unten rechts entfernt; stattdessen Reiter «Weitere Quellen» oben für einzelne Erweiterungen als Startseite
+- Quellensuche: Seiten, die Serien pro Staffel führen («Titel – Staffel 1», «2. Staffel», «Season 3»), werden jetzt auch bei Staffel 1 gefunden. Dadurch liefern mehr Erweiterungen Links für die Quellenauswahl.
+- Neu: «Letzte Quellensuche» unter Einstellungen, Allgemein, Stream-Auswahl. Zeigt für jede Erweiterung, ob sie den Titel gefunden hat, wie viele Links sie geliefert hat oder warum nicht.

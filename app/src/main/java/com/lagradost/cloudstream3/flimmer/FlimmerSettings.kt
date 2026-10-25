@@ -94,6 +94,11 @@ fun flimmerStreamGroup(): Preference.PreferenceGroup {
                     FlimmerStreams.language = next
                 },
             ),
+            Preference.PreferenceItem.TextPreference(
+                title = "Letzte Quellensuche",
+                subtitle = FlimmerStreams.lastReport ?: "Noch keine Suche. Spiele einen Titel aus dem Flimmer Katalog ab.",
+                icon = painterResource(R.drawable.search_icon),
+            ),
             Preference.PreferenceItem.InfoPreference(
                 title = "Flimmer sortiert Streams nach Sprache, Qualität und danach, welche Quellen bei dir zuverlässig starten. " +
                         "Nach einem sehr guten Treffer startet die Wiedergabe nach kurzer Zeit, sonst wird bis zu 10 Sekunden auf bessere Quellen gewartet."

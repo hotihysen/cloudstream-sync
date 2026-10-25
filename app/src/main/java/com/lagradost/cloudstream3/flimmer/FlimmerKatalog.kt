@@ -730,6 +730,23 @@ class FlimmerKatalog(private val mode: Mode = Mode.ALL) : MainAPI() {
 
     private data class Match(val result: SearchResponse, val seasonEntry: Boolean)
 
+    private val seasonPatterns = listOf(
+        Regex("^(.+?)(?:staffel|season|part|teil)(\\d{1,2})$"),
+        Regex("^(.+?)(\\d{1,2})(?:st|nd|rd|th)?(?:staffel|season)$"),
+        Regex("^(.+?)s(\\d{1,2})$"),
+    )
+
+    /** «witchesofeastendstaffel1» → («witchesofeastend», 1) */
+    private fun splitSeason(name: String): Pair<String, Int>? {
+        for (p in seasonPatterns) {
+            val m = p.find(name) ?: continue
+            val base = m.groupValues[1]
+            val num = m.groupValues[2].toIntOrNull() ?: continue
+            if (base.length >= 2) return base to num
+        }
+        return null
+    }
+
     /** Bester Treffer einer Erweiterung für den Titel, oder null. */
     private suspend fun findMatch(api: MainAPI, d: LinkData): Match? {
         val allTitles = (listOf(d.title) + listOfNotNull(d.originalTitle) + d.altTitles).distinct()
@@ -756,6 +773,14 @@ class FlimmerKatalog(private val mode: Mode = Mode.ALL) : MainAPI() {
             }
             if (wantedSeason.isNotEmpty()) {
                 fitting.firstOrNull { loose(it.name) in wantedSeason }?.let { return Match(it, true) }
+            }
+            // Eintrag pro Staffel, auch Staffel 1 («Titel – Staffel 1», «Titel Season 2», «2. Staffel»)
+            if (d.isTv) {
+                val want = season ?: 1
+                fitting.firstOrNull { r ->
+                    val (base, num) = splitSeason(loose(r.name)) ?: return@firstOrNull false
+                    num == want && base in wanted
+                }?.let { return Match(it, true) }
             }
             val exact = fitting.filter { loose(it.name) in wanted }
             // Bei Serien kann das Jahr eines Eintrags von der ersten Staffel abweichen: Jahr nur als Vorzug
@@ -795,6 +820,13 @@ class FlimmerKatalog(private val mode: Mode = Mode.ALL) : MainAPI() {
         return null
     }
 
+    private fun buildReport(d: LinkData, report: Map<String, String>): String {
+        val head = d.title + if (d.isTv) " · Staffel ${d.season}, Folge ${d.episode}" else ""
+        val names = (listOf(d.title) + listOfNotNull(d.originalTitle) + d.altTitles).distinct().take(4)
+        return head + "\nGesucht als: " + names.joinToString(", ") + "\n\n" +
+                report.entries.sortedBy { it.key.lowercase() }.joinToString("\n") { "${it.key}: ${it.value}" }
+    }
+
     /** Name der Erweiterung voranstellen, damit in der Auswahl sichtbar ist, woher ein Stream kommt. */
     private suspend fun withSourceName(api: MainAPI, link: ExtractorLink): ExtractorLink {
         if (link.javaClass != ExtractorLink::class.java || link.name.startsWith(api.name)) return link
@@ -832,24 +864,54 @@ class FlimmerKatalog(private val mode: Mode = Mode.ALL) : MainAPI() {
 
         coroutineScope {
             // Alle Erweiterungen gleichzeitig abfragen
+            // Suchbericht pro Erweiterung (Einstellungen, Stream-Auswahl, «Letzte Quellensuche»)
+            val report = ConcurrentHashMap<String, String>()
+            val linkCount = ConcurrentHashMap<String, AtomicInteger>()
+            val episodeLabel = if (d.isTv) " S${d.season}E${d.episode}" else ""
             val jobs = providers.map { api ->
                 launch {
-                    withTimeoutOrNull(PROVIDER_TIMEOUT_MS) {
+                    report[api.name] = "läuft …"
+                    val finished = withTimeoutOrNull(PROVIDER_TIMEOUT_MS) {
                         try {
-                            val match = findMatch(api, d) ?: return@withTimeoutOrNull
-                            val load = api.load(match.result.url) ?: return@withTimeoutOrNull
-                            val epData = episodeData(load, d, match.seasonEntry) ?: return@withTimeoutOrNull
+                            val match = findMatch(api, d)
+                            if (match == null) {
+                                report[api.name] = "kein passender Titel"
+                                return@withTimeoutOrNull true
+                            }
+                            val load = api.load(match.result.url)
+                            if (load == null) {
+                                report[api.name] = "«${match.result.name}» gefunden, Seite lädt nicht"
+                                return@withTimeoutOrNull true
+                            }
+                            val epData = episodeData(load, d, match.seasonEntry)
+                            if (epData == null) {
+                                report[api.name] = "«${match.result.name}» gefunden, Folge$episodeLabel fehlt"
+                                return@withTimeoutOrNull true
+                            }
+                            report[api.name] = "«${match.result.name}» gefunden, lädt Links …"
                             api.loadLinks(epData, isCasting, subtitleCallback) { link ->
+                                linkCount.getOrPut(api.name) { AtomicInteger(0) }.incrementAndGet()
                                 incoming.trySend(api to link)
                             }
+                            val n = linkCount[api.name]?.get() ?: 0
+                            report[api.name] = if (n > 0) "$n Links («${match.result.name}»)"
+                            else "«${match.result.name}» gefunden, aber keine Links"
                         } catch (t: kotlinx.coroutines.CancellationException) {
                             throw t
                         } catch (t: Throwable) {
                             Log.w(TAG, "${api.name}: ${t.message}")
+                            report[api.name] = "Fehler: ${t.message?.take(80) ?: t.javaClass.simpleName}"
                         }
+                        true
                     }
+                    if (finished == null) {
+                        val n = linkCount[api.name]?.get() ?: 0
+                        report[api.name] = if (n > 0) "$n Links (danach Zeitüberschreitung)" else "Zeitüberschreitung"
+                    }
+                    FlimmerStreams.lastReport = buildReport(d, report)
                 }
             }
+            FlimmerStreams.lastReport = buildReport(d, report)
 
             // Links aufbereiten: Qualität ermitteln, Herkunft im Namen, Bewertung registrieren
             val processor = launch {
