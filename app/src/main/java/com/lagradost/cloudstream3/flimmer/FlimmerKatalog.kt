@@ -63,7 +63,7 @@ class FlimmerKatalog : MainAPI() {
         private const val IMG = "https://image.tmdb.org/t/p"
         private const val LANG = "de-DE"
         private const val REGION = "CH"
-        private const val PROVIDER_TIMEOUT_MS = 30_000L
+        private const val PROVIDER_TIMEOUT_MS = 45_000L
 
         val apiKey: String get() = BuildConfig.TMDB_API_KEY.trim()
         val isConfigured: Boolean get() = apiKey.isNotBlank() && apiKey != "null"
@@ -156,6 +156,35 @@ class FlimmerKatalog : MainAPI() {
     data class TmdbImages(@JsonProperty("logos") @SerialName("logos") val logos: List<TmdbImage> = emptyList())
 
     @Serializable
+    data class TmdbAltTitle(
+        @JsonProperty("iso_3166_1") @SerialName("iso_3166_1") val country: String? = null,
+        @JsonProperty("title") @SerialName("title") val title: String? = null,
+    )
+
+    @Serializable
+    data class TmdbAltTitles(
+        @JsonProperty("titles") @SerialName("titles") val titles: List<TmdbAltTitle> = emptyList(),
+        @JsonProperty("results") @SerialName("results") val results: List<TmdbAltTitle> = emptyList(),
+    )
+
+    @Serializable
+    data class TmdbTranslationData(
+        @JsonProperty("title") @SerialName("title") val title: String? = null,
+        @JsonProperty("name") @SerialName("name") val name: String? = null,
+    )
+
+    @Serializable
+    data class TmdbTranslation(
+        @JsonProperty("iso_639_1") @SerialName("iso_639_1") val lang: String? = null,
+        @JsonProperty("data") @SerialName("data") val data: TmdbTranslationData? = null,
+    )
+
+    @Serializable
+    data class TmdbTranslations(
+        @JsonProperty("translations") @SerialName("translations") val translations: List<TmdbTranslation> = emptyList(),
+    )
+
+    @Serializable
     data class TmdbExternalIds(@JsonProperty("imdb_id") @SerialName("imdb_id") val imdbId: String? = null)
 
     @Serializable
@@ -202,6 +231,8 @@ class FlimmerKatalog : MainAPI() {
         @JsonProperty("external_ids") @SerialName("external_ids") val externalIds: TmdbExternalIds? = null,
         @JsonProperty("imdb_id") @SerialName("imdb_id") val imdbId: String? = null,
         @JsonProperty("recommendations") @SerialName("recommendations") val recommendations: TmdbPage? = null,
+        @JsonProperty("alternative_titles") @SerialName("alternative_titles") val alternativeTitles: TmdbAltTitles? = null,
+        @JsonProperty("translations") @SerialName("translations") val translations: TmdbTranslations? = null,
     )
 
     /** Daten für das Abspielen; landen als JSON in Episode.data bzw. dataUrl. */
@@ -215,6 +246,8 @@ class FlimmerKatalog : MainAPI() {
         @JsonProperty("s") @SerialName("s") val season: Int? = null,
         @JsonProperty("e") @SerialName("e") val episode: Int? = null,
         @JsonProperty("imdb") @SerialName("imdb") val imdbId: String? = null,
+        /** Weitere Titel für die Suche: englisch, Original in lateinischer Schrift, Alternativtitel */
+        @JsonProperty("alt") @SerialName("alt") val altTitles: List<String> = emptyList(),
     )
 
     // ------------------------------------------------------------------ TMDB-Zugriff
@@ -302,7 +335,7 @@ class FlimmerKatalog : MainAPI() {
         val d = parseJson<TmdbDetail>(
             tmdb(
                 "$kind/$id",
-                "append_to_response=credits,videos,images,external_ids,recommendations" +
+                "append_to_response=credits,videos,images,external_ids,recommendations,alternative_titles,translations" +
                         "&include_image_language=de,en,null&include_video_language=de,en"
             )
         )
@@ -318,9 +351,10 @@ class FlimmerKatalog : MainAPI() {
             ?.let { "https://www.youtube.com/watch?v=${it.key}" }
         val recs = d.recommendations?.results?.mapNotNull { it.toSearch(kind) }
         val cast = d.credits?.cast?.take(20)?.map { Actor(it.name, img(it.profilePath, "w185")) to it.character }
+        val alt = altTitles(d, title)
 
         if (!isTv) {
-            val link = LinkData(id, false, title, original, year, imdbId = imdb)
+            val link = LinkData(id, false, title, original, year, imdbId = imdb, altTitles = alt)
             return newMovieLoadResponse(title, url, TvType.Movie, link.toJson()) {
                 posterUrl = img(d.posterPath)
                 backgroundPosterUrl = img(d.backdropPath, "original")
@@ -347,7 +381,7 @@ class FlimmerKatalog : MainAPI() {
                 continue
             }
             for (e in season.episodes) {
-                val link = LinkData(id, true, title, original, year, e.seasonNumber, e.episodeNumber, imdb)
+                val link = LinkData(id, true, title, original, year, e.seasonNumber, e.episodeNumber, imdb, alt)
                 episodes += newEpisode(link.toJson()) {
                     name = e.name
                     this.season = e.seasonNumber
@@ -396,54 +430,118 @@ class FlimmerKatalog : MainAPI() {
             .replace(Regex("[^a-z0-9]"), "")
     }
 
-    private fun searchYear(r: SearchResponse): Int? = when (r) {
-        is MovieSearchResponse -> r.year
-        is TvSeriesSearchResponse -> r.year
-        else -> null
+    private val noiseSuffixes = listOf(
+        "germandub", "gerdub", "germansub", "gersub", "deutsch", "german",
+        "dubbed", "subbed", "dub", "sub", "omu", "uncensored", "tvseries", "tv"
+    )
+
+    /** Wie [normalize], ohne Artikel vorne und ohne Zusätze wie «German Dub», «TV», Jahreszahl. */
+    private fun loose(s: String?): String {
+        var n = normalize(s)
+        for (article in listOf("the", "der", "die", "das")) {
+            if (n.startsWith(article) && n.length > article.length + 3) n = n.removePrefix(article)
+        }
+        var changed = true
+        while (changed) {
+            changed = false
+            n.replace(Regex("(19|20)\\d{2}$"), "").let { if (it != n && it.length > 2) { n = it; changed = true } }
+            for (suf in noiseSuffixes) {
+                if (n.endsWith(suf) && n.length > suf.length + 2) {
+                    n = n.removeSuffix(suf); changed = true
+                }
+            }
+        }
+        return n
     }
 
-    private fun typeFits(r: SearchResponse, isTv: Boolean): Boolean {
-        val t = r.type ?: return true
-        return if (isTv) t in setOf(TvType.TvSeries, TvType.Anime, TvType.Cartoon, TvType.AsianDrama, TvType.Documentary, TvType.OVA)
-        else t in setOf(TvType.Movie, TvType.AnimeMovie, TvType.Cartoon, TvType.Documentary)
+    private fun seasonSuffixes(season: Int): List<String> {
+        val ord = when (season) { 1 -> "st"; 2 -> "nd"; 3 -> "rd"; else -> "th" }
+        return listOf("season$season", "staffel$season", "$season$ord" + "season", "s$season", "part$season", "$season")
     }
+
+    /** Lateinische Schrift (für Suchanfragen sinnvoll). */
+    private fun isLatin(s: String) = s.count { it.isLetter() && it.code < 0x250 } >= s.count { it.isLetter() } * 0.8
+
+    private fun altTitles(d: TmdbDetail, germanTitle: String): List<String> {
+        val out = linkedSetOf<String>()
+        d.translations?.translations
+            ?.firstOrNull { it.lang == "en" }?.data?.let { (it.title ?: it.name) }
+            ?.takeIf { it.isNotBlank() }?.let { out += it }
+        (d.originalTitle ?: d.originalName)?.takeIf { isLatin(it) }?.let { out += it }
+        val alts = (d.alternativeTitles?.titles.orEmpty() + d.alternativeTitles?.results.orEmpty())
+        val preferred = listOf("US", "GB", "JP", "DE", "AT", "CH")
+        alts.sortedBy { a -> preferred.indexOf(a.country).let { if (it < 0) 99 else it } }
+            .mapNotNull { it.title?.trim() }
+            .filter { it.isNotBlank() && isLatin(it) }
+            .forEach { out += it }
+        out.remove(germanTitle)
+        return out.take(8)
+    }
+
+    private data class Match(val result: SearchResponse, val seasonEntry: Boolean)
 
     /** Bester Treffer einer Erweiterung für den Titel, oder null. */
-    private suspend fun findMatch(api: MainAPI, d: LinkData): SearchResponse? {
-        val wanted = listOfNotNull(d.title, d.originalTitle).map { normalize(it) }.filter { it.isNotEmpty() }.toSet()
-        for (query in listOfNotNull(d.title, d.originalTitle).distinct()) {
+    private suspend fun findMatch(api: MainAPI, d: LinkData): Match? {
+        val allTitles = (listOf(d.title) + listOfNotNull(d.originalTitle) + d.altTitles).distinct()
+        val wanted = allTitles.map { loose(it) }.filter { it.length >= 2 }.toSet()
+        val season = d.season
+        // Anime-Seiten führen spätere Staffeln oft als eigenen Eintrag («… Season 2»)
+        val wantedSeason = if (d.isTv && season != null && season > 1) {
+            wanted.flatMap { w -> seasonSuffixes(season).map { w + it } }.toSet()
+        } else emptySet()
+
+        // Höchstens vier Suchanfragen pro Erweiterung: deutsch, englisch, original, ein Alternativtitel
+        val queries = allTitles.take(4)
+        for (query in queries) {
             val results = try {
                 api.search(query, 1)?.items ?: emptyList()
             } catch (t: Throwable) {
                 emptyList()
             }
-            val candidates = results.filter { typeFits(it, d.isTv) && normalize(it.name) in wanted }
-            if (candidates.isEmpty()) continue
-            val withYear = candidates.firstOrNull { r ->
-                val y = searchYear(r)
-                y != null && d.year != null && kotlin.math.abs(y - d.year) <= 1
+            val fitting = results.filter { typeFits(it, d.isTv) }
+            fun yearOk(r: SearchResponse): Boolean {
+                val y = searchYear(r) ?: return true
+                val want = d.year ?: return true
+                return kotlin.math.abs(y - want) <= 1
             }
-            val noYear = candidates.firstOrNull { searchYear(it) == null || d.year == null }
-            return withYear ?: noYear ?: continue
+            if (wantedSeason.isNotEmpty()) {
+                fitting.firstOrNull { loose(it.name) in wantedSeason }?.let { return Match(it, true) }
+            }
+            val exact = fitting.filter { loose(it.name) in wanted }
+            // Bei Serien kann das Jahr eines Eintrags von der ersten Staffel abweichen: Jahr nur als Vorzug
+            (exact.firstOrNull { yearOk(it) } ?: if (d.isTv) exact.firstOrNull() else null)
+                ?.let { return Match(it, false) }
         }
         return null
     }
 
-    private fun episodeData(load: LoadResponse, d: LinkData): String? {
+    private fun episodeData(load: LoadResponse, d: LinkData, seasonEntry: Boolean): String? {
         if (!d.isTv) {
             return (load as? MovieLoadResponse)?.dataUrl?.takeIf { it.isNotBlank() }
         }
-        val eps: List<Episode> = when (load) {
-            is TvSeriesLoadResponse -> load.episodes
-            // Deutsche Synchronfassung bevorzugen, wenn die Erweiterung trennt
-            is AnimeLoadResponse -> load.episodes[DubStatus.Dubbed] ?: load.episodes.values.flatten()
+        val lists: List<List<Episode>> = when (load) {
+            is TvSeriesLoadResponse -> listOf(load.episodes)
+            // Erst Synchronfassung, dann Untertitel, dann alles andere
+            is AnimeLoadResponse -> listOfNotNull(
+                load.episodes[DubStatus.Dubbed],
+                load.episodes[DubStatus.Subbed],
+                load.episodes.values.flatten()
+            )
             else -> return null
         }
         val s = d.season ?: return null
         val e = d.episode ?: return null
-        eps.firstOrNull { it.season == s && it.episode == e }?.let { return it.data }
-        // Erweiterungen ohne Staffelangabe: nur bei Staffel 1 sicher zuordenbar
-        if (s == 1) eps.firstOrNull { it.season == null && it.episode == e }?.let { return it.data }
+        for (eps in lists) {
+            if (seasonEntry) {
+                // Eigener Eintrag pro Staffel: Folgen sind dort meist ab 1 nummeriert
+                eps.firstOrNull { (it.season == null || it.season == 1 || it.season == s) && it.episode == e }
+                    ?.let { return it.data }
+                continue
+            }
+            eps.firstOrNull { it.season == s && it.episode == e }?.let { return it.data }
+            // Erweiterungen ohne Staffelangabe: nur bei Staffel 1 sicher zuordenbar
+            if (s == 1) eps.firstOrNull { it.season == null && it.episode == e }?.let { return it.data }
+        }
         return null
     }
 
@@ -468,8 +566,8 @@ class FlimmerKatalog : MainAPI() {
                     withTimeoutOrNull(PROVIDER_TIMEOUT_MS) {
                         try {
                             val match = findMatch(api, d) ?: return@withTimeoutOrNull
-                            val load = api.load(match.url) ?: return@withTimeoutOrNull
-                            val epData = episodeData(load, d) ?: return@withTimeoutOrNull
+                            val load = api.load(match.result.url) ?: return@withTimeoutOrNull
+                            val epData = episodeData(load, d, match.seasonEntry) ?: return@withTimeoutOrNull
                             api.loadLinks(epData, isCasting, subtitleCallback) { link ->
                                 linkOwner[link.url] = api
                                 found.incrementAndGet()

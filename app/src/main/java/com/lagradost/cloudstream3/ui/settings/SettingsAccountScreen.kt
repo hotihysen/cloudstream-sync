@@ -11,6 +11,7 @@ import androidx.fragment.app.FragmentActivity
 import com.lagradost.cloudstream3.CommonActivity.activity
 import com.lagradost.cloudstream3.CommonActivity.onDialogDismissedEvent
 import com.lagradost.cloudstream3.R
+import com.lagradost.cloudstream3.flimmer.flimmerTraktGroup
 import com.lagradost.cloudstream3.syncproviders.AccountManager.Companion.aniListApi
 import com.lagradost.cloudstream3.syncproviders.AccountManager.Companion.animeSkipApi
 import com.lagradost.cloudstream3.syncproviders.AccountManager.Companion.kitsuApi
@@ -93,7 +94,10 @@ object SettingsAccountScreen : SearchableSettings, BiometricAuthenticator.Biomet
             }
         }
 
+        val traktGroup = flimmerTraktGroup()
+
         return persistentListOf(
+            traktGroup,
             Preference.PreferenceGroup(
                 title = stringResource(R.string.pref_category_accounts),
                 preferenceItems = syncApis.map { api ->

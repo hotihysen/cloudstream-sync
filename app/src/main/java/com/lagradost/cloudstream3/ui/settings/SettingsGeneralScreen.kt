@@ -31,7 +31,7 @@ import com.lagradost.cloudstream3.network.initClient
 import com.lagradost.cloudstream3.ui.settings.SettingsProvidersScreen.toStringRes
 import com.lagradost.cloudstream3.utils.BatteryOptimizationChecker.isAppRestricted
 import com.lagradost.cloudstream3.utils.CloudSync
-import com.lagradost.cloudstream3.flimmer.FlimmerTrakt
+import com.lagradost.cloudstream3.flimmer.flimmerTraktGroup
 import com.lagradost.cloudstream3.utils.BatteryOptimizationChecker.showRequestIgnoreBatteryOptDialog
 import com.lagradost.cloudstream3.utils.SubtitleHelper.fromTagToLanguageName
 import com.lagradost.cloudstream3.utils.SubtitleHelper.getNameNextToFlagEmoji
@@ -102,28 +102,6 @@ object SettingsGeneralScreen : SearchableSettings {
         var syncStatus by remember { mutableStateOf(CloudSync.statusText(context)) }
         var syncBusy by remember { mutableStateOf(false) }
 
-        // Trakt
-        var traktLoggedIn by remember { mutableStateOf(FlimmerTrakt.isLoggedIn()) }
-        var traktUser by remember { mutableStateOf(FlimmerTrakt.userName()) }
-        var traktScrobble by remember { mutableStateOf(FlimmerTrakt.scrobbleEnabled) }
-        var traktCode by remember { mutableStateOf<FlimmerTrakt.DeviceCode?>(null) }
-        var traktCancelled by remember { mutableStateOf(false) }
-
-        traktCode?.let { code ->
-            ActionDialog(
-                title = "Mit Trakt verbinden",
-                text = "Öffne auf dem Handy oder PC\n\n${code.verificationUrl}\n\nund gib diesen Code ein:\n\n${code.userCode}\n\nDieses Fenster schliesst sich automatisch, sobald du bestätigt hast.",
-                confirmText = "Seite öffnen",
-                dismissText = stringResource(R.string.cancel),
-                dismiss = {
-                    traktCancelled = true
-                    traktCode = null
-                },
-                confirm = {
-                    CloudStreamApp.openBrowser(code.verificationUrl)
-                },
-            )
-        }
 
         if (isBatteryShown) {
             ActionDialog(
@@ -229,60 +207,7 @@ object SettingsGeneralScreen : SearchableSettings {
             )
         )
 
-        val traktGroup = Preference.PreferenceGroup(
-            title = "Trakt",
-            preferenceItems = persistentListOf(
-                Preference.PreferenceItem.TextPreference(
-                    title = if (traktLoggedIn) "Trakt trennen" else "Mit Trakt verbinden",
-                    subtitle = when {
-                        !FlimmerTrakt.isConfigured -> "Trakt-Client-ID fehlt im Build"
-                        traktLoggedIn -> "Verbunden" + (traktUser?.let { " als $it" } ?: "")
-                        else -> "Anmeldung mit Code über trakt.tv/activate"
-                    },
-                    icon = painterResource(R.drawable.baseline_sync_24),
-                    enabled = FlimmerTrakt.isConfigured,
-                    onClick = {
-                        if (traktLoggedIn) {
-                            FlimmerTrakt.logout()
-                            traktLoggedIn = false
-                            traktUser = null
-                            showToast("Trakt getrennt")
-                        } else {
-                            syncScope.launch(Dispatchers.IO) {
-                                try {
-                                    val code = FlimmerTrakt.requestDeviceCode()
-                                    traktCancelled = false
-                                    traktCode = code
-                                    val err = FlimmerTrakt.pollDeviceToken(code) { traktCancelled }
-                                    traktCode = null
-                                    if (err == null) {
-                                        traktLoggedIn = true
-                                        traktUser = FlimmerTrakt.userName()
-                                        showToast("Mit Trakt verbunden")
-                                    } else if (!traktCancelled) {
-                                        showToast("Trakt: $err")
-                                    }
-                                } catch (t: Throwable) {
-                                    traktCode = null
-                                    showToast("Trakt: ${t.message}")
-                                }
-                            }
-                        }
-                    },
-                ),
-                Preference.PreferenceItem.TextPreference(
-                    title = "Scrobbeln",
-                    subtitle = if (traktScrobble) "An: Titel aus dem Flimmer Katalog werden an Trakt gemeldet und ab 80 % als gesehen markiert"
-                    else "Aus",
-                    icon = painterResource(R.drawable.wifi_proxy_24px),
-                    enabled = traktLoggedIn,
-                    onClick = {
-                        traktScrobble = !traktScrobble
-                        FlimmerTrakt.scrobbleEnabled = traktScrobble
-                    },
-                ),
-            )
-        )
+        val traktGroup = flimmerTraktGroup()
 
         return persistentListOf(
             cloudSyncGroup,
