@@ -6,7 +6,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.painterResource
+import com.lagradost.cloudstream3.CommonActivity.activity
 import com.lagradost.cloudstream3.R
+import com.lagradost.cloudstream3.syncproviders.AccountManager
+import com.lagradost.cloudstream3.ui.settings.SettingsAccount.Companion.addAccount
+import com.lagradost.cloudstream3.ui.settings.SettingsAccount.Companion.showLoginInfo
 import com.mihon.presentation.settings.Preference
 import kotlinx.collections.immutable.persistentListOf
 
@@ -29,9 +33,22 @@ fun flimmerTraktGroup(): Preference.PreferenceGroup {
                 subtitle = when {
                     !FlimmerTrakt.isConfigured -> "Trakt-Client-ID fehlt im Build"
                     loggedIn -> "Angemeldet als ${user ?: "Trakt-Nutzer"}. Bibliothek: Reiter «Bibliothek», oben «Trakt» wählen."
-                    else -> "Unter Einstellungen, Konten auf «Trakt» tippen und mit Code anmelden."
+                    else -> "Hier tippen und mit Code auf trakt.tv/activate anmelden."
                 },
                 icon = painterResource(R.drawable.ic_trakt),
+                enabled = FlimmerTrakt.isConfigured,
+                onClick = {
+                    val act = activity ?: return@TextPreference
+                    val repo = AccountManager.syncApis.firstOrNull { it.idPrefix == AccountManager.traktApi.idPrefix }
+                        ?: return@TextPreference
+                    val info = repo.authUser()
+                    if (repo.accounts.isNotEmpty()) {
+                        val index = repo.accounts.indexOfFirst { it.user.id == info?.id }
+                        showLoginInfo(act, repo, info, index)
+                    } else {
+                        addAccount(act, repo)
+                    }
+                },
             ),
             Preference.PreferenceItem.TextPreference(
                 title = "Scrobbeln",

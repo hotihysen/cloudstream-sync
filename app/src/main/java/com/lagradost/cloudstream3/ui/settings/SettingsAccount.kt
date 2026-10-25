@@ -392,7 +392,8 @@ class SettingsAccount : BasePreferenceFragmentCompat(), BiometricCallback {
         @UiThread
         fun addAccount(activity: Activity, api: AuthRepo) {
             try {
-                if (api.hasPin && !isLayout(PHONE)) {
+                // Flimmer: Dienste nur mit Code-Anmeldung (Trakt) auch auf dem Handy per Code
+                if (api.hasPin && (!isLayout(PHONE) || !api.hasOAuth2)) {
                     showPin(activity, api)
                 } else if (api.hasOAuth2) {
                     api.openOAuth2PageWithToast()

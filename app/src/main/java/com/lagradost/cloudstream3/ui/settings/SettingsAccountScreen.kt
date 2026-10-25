@@ -44,6 +44,7 @@ import kotlinx.collections.immutable.persistentListOf
 
 object SettingsAccountScreen : SearchableSettings, BiometricAuthenticator.BiometricCallback {
     val syncApis = persistentListOf(
+        SyncRepo(com.lagradost.cloudstream3.syncproviders.AccountManager.traktApi),
         SyncRepo(malApi),
         SyncRepo(kitsuApi),
         SyncRepo(aniListApi),
