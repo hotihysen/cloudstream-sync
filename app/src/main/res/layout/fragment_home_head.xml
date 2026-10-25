@@ -157,10 +157,15 @@
                 android:layout_marginEnd="8dp"
                 android:insetTop="0dp"
                 android:insetBottom="0dp"
+                android:letterSpacing="0"
+                android:maxLines="1"
+                android:paddingStart="6dp"
+                android:paddingEnd="6dp"
                 android:text="@string/home_play"
-                android:textSize="16sp"
+                android:textSize="15sp"
                 android:textStyle="bold"
                 app:cornerRadius="8dp"
+                app:iconPadding="6dp"
                 app:icon="@drawable/ic_baseline_play_arrow_24"
                 app:iconGravity="textStart" />
 
@@ -179,8 +184,9 @@
                 android:paddingStart="10dp"
                 android:paddingEnd="10dp"
                 android:text="@string/none"
+                android:letterSpacing="0"
                 android:textColor="@color/white"
-                android:textSize="15sp"
+                android:textSize="14sp"
                 android:textStyle="bold"
                 app:drawableTint="@color/white" />
 

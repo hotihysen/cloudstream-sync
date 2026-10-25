@@ -224,6 +224,15 @@
         tools:ignore="ContentDescription"
         tools:visibility="visible" />
 
+    <!-- Flimmer: deckt die Statusleiste ab, damit beim Scrollen kein Inhalt durchscheint -->
+    <View
+        android:id="@+id/flimmer_status_scrim"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_gravity="top"
+        android:alpha="0.95"
+        android:background="?attr/primaryBlackBackground" />
+
     <!-- Placeholder for TV layout random button - always hidden on phone -->
     <ImageView
         android:id="@+id/home_random_button_tv"

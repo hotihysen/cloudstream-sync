@@ -500,7 +500,7 @@ class FlimmerKatalog(private val mode: Mode = Mode.ALL) : MainAPI() {
             val link = LinkData(id, false, title, original, year, imdbId = imdb, altTitles = alt)
             return newMovieLoadResponse(title, url, if (isAnime) TvType.AnimeMovie else TvType.Movie, link.toJson()) {
                 posterUrl = img(d.posterPath)
-                backgroundPosterUrl = img(d.backdropPath, "original")
+                backgroundPosterUrl = img(d.backdropPath, "w1280")
                 logoUrl = logo
                 plot = d.overview
                 this.year = year
@@ -539,7 +539,7 @@ class FlimmerKatalog(private val mode: Mode = Mode.ALL) : MainAPI() {
         }
         return newTvSeriesLoadResponse(title, url, if (isAnime) TvType.Anime else TvType.TvSeries, episodes) {
             posterUrl = img(d.posterPath)
-            backgroundPosterUrl = img(d.backdropPath, "original")
+            backgroundPosterUrl = img(d.backdropPath, "w1280")
             logoUrl = logo
             plot = d.overview
             this.year = year

@@ -1,6 +1,5 @@
-Flimmer 17.0 Beta 2
+Flimmer 17.0 Beta 3
 
-- Reiter Alles, Serien, Filme, Anime wechseln jetzt wirklich den Inhalt
-- Hero-Karte passt sich der Bildschirmhöhe an, Knöpfe bleiben sichtbar
-- Leerraum über der Suche entfernt
-- Navigationsleiste kompakter, Symbole mittig
+- Knöpfe «Abspielen» und «Meine Liste» passen in eine Zeile
+- Statusleiste oben wird beim Scrollen abgedeckt
+- Detailseiten aus dem Katalog: Hintergrundbild lädt schneller (kleinere Bildgrösse)

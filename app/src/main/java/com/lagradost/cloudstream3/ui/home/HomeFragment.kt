@@ -700,6 +700,10 @@ class HomeFragment : BaseFragment<FragmentHomeBinding>(
             homeMasterRecycler.adapter = homeMasterAdapter
 
             homeApiFab.isVisible = isLayout(PHONE)
+            // Flimmer: Statusleiste abdecken
+            root.findViewById<View>(R.id.flimmer_status_scrim)?.let {
+                com.lagradost.cloudstream3.utils.UIHelper.fixPaddingStatusbarView(it)
+            }
 
             homePreviewReloadProvider.setOnClickListener {
                 homeViewModel.loadAndCancel(
