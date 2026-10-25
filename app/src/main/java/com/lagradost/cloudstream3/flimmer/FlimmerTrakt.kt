@@ -1,57 +1,55 @@
 package com.lagradost.cloudstream3.flimmer
 
 import android.content.Context
-import android.content.SharedPreferences
 import android.util.Log
 import androidx.core.content.edit
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.lagradost.cloudstream3.BuildConfig
 import com.lagradost.cloudstream3.CloudStreamApp
-import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.LoadResponse
+import com.lagradost.cloudstream3.syncproviders.AccountManager
+import com.lagradost.cloudstream3.syncproviders.SyncAPI
+import com.lagradost.cloudstream3.syncproviders.SyncRepo
+import com.lagradost.cloudstream3.syncproviders.providers.TraktApi
+import com.lagradost.cloudstream3.ui.SyncWatchType
+import com.lagradost.cloudstream3.ui.WatchType
 import com.lagradost.cloudstream3.ui.result.ResultEpisode
+import com.lagradost.cloudstream3.ui.result.getId
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Trakt-Anbindung für Flimmer.
+ * Ergänzungen zu Trakt, die über den Sync-Dienst (TraktApi) hinausgehen:
+ * - Scrobbeln während der Wiedergabe (für alle Titel mit TMDB- oder IMDb-ID)
+ * - Lesezeichen in Flimmer → Trakt (Watchlist, Gesehen, …)
+ * - Watchlist-Reihe auf der Startseite
  *
- * - Anmeldung per Gerätecode (trakt.tv/activate), ohne Client Secret (Trakt-PKCE-App).
- * - Scrobbeln: Titel aus dem Flimmer Katalog werden beim Schauen an Trakt gemeldet und
- *   ab 80 % als gesehen markiert.
- * - Watchlist: liefert die TMDB-IDs der Trakt-Watchlist für die Startseite.
+ * Die Anmeldung läuft über Einstellungen, Konten, «Trakt» (AccountManager).
  */
 object FlimmerTrakt {
     private const val TAG = "FlimmerTrakt"
     private const val API = "https://api.trakt.tv"
     private const val PREFS = "flimmer_trakt"
-    private const val K_ACCESS = "access"
-    private const val K_REFRESH = "refresh"
-    private const val K_EXPIRES = "expires"
-    private const val K_USER = "user"
     private const val K_SCROBBLE = "scrobble"
-    private const val REDIRECT = "urn:ietf:wg:oauth:2.0:oob"
+    private const val K_BOOKMARKS = "bookmarks"
     private val JSON = "application/json; charset=utf-8".toMediaType()
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    val clientId: String get() = BuildConfig.FLIMMER_TRAKT_ID.trim()
-    private val clientSecret: String get() = BuildConfig.FLIMMER_TRAKT_SECRET.trim()
-    val isConfigured: Boolean get() = clientId.isNotBlank() && clientId != "null"
+    val isConfigured: Boolean get() = TraktApi.clientId.isNotBlank() && TraktApi.clientId != "null"
+
+    private val repo: SyncRepo? get() = AccountManager.syncApis.firstOrNull { it.idPrefix == AccountManager.traktApi.idPrefix }
+
+    fun isLoggedIn(): Boolean = repo?.authUser() != null
+    fun userName(): String? = repo?.authUser()?.name
 
     private val ctx: Context? get() = CloudStreamApp.context
-    private fun prefs(c: Context): SharedPreferences = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-
-    fun isLoggedIn(): Boolean = ctx?.let { prefs(it).getString(K_ACCESS, null) } != null
-    fun userName(): String? = ctx?.let { prefs(it).getString(K_USER, null) }
+    private fun prefs(c: Context) = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     var scrobbleEnabled: Boolean
         get() = ctx?.let { prefs(it).getBoolean(K_SCROBBLE, true) } ?: false
@@ -59,208 +57,111 @@ object FlimmerTrakt {
             ctx?.let { c -> prefs(c).edit { putBoolean(K_SCROBBLE, value) } }
         }
 
-    // ------------------------------------------------------------------ Modelle
-
-    @Serializable
-    data class DeviceCode(
-        @JsonProperty("device_code") @SerialName("device_code") val deviceCode: String = "",
-        @JsonProperty("user_code") @SerialName("user_code") val userCode: String = "",
-        @JsonProperty("verification_url") @SerialName("verification_url") val verificationUrl: String = "https://trakt.tv/activate",
-        @JsonProperty("expires_in") @SerialName("expires_in") val expiresIn: Int = 600,
-        @JsonProperty("interval") @SerialName("interval") val interval: Int = 5,
-    )
-
-    @Serializable
-    data class Token(
-        @JsonProperty("access_token") @SerialName("access_token") val accessToken: String = "",
-        @JsonProperty("refresh_token") @SerialName("refresh_token") val refreshToken: String = "",
-        @JsonProperty("expires_in") @SerialName("expires_in") val expiresIn: Long = 0,
-        @JsonProperty("created_at") @SerialName("created_at") val createdAt: Long = 0,
-    )
-
-    @Serializable
-    data class Ids(
-        @JsonProperty("tmdb") @SerialName("tmdb") val tmdb: Int? = null,
-        @JsonProperty("imdb") @SerialName("imdb") val imdb: String? = null,
-    )
-
-    @Serializable
-    data class Media(@JsonProperty("ids") @SerialName("ids") val ids: Ids = Ids())
-
-    @Serializable
-    data class EpisodeRef(
-        @JsonProperty("season") @SerialName("season") val season: Int,
-        @JsonProperty("number") @SerialName("number") val number: Int,
-    )
-
-    @Serializable
-    data class ScrobbleBody(
-        @JsonProperty("movie") @SerialName("movie") val movie: Media? = null,
-        @JsonProperty("show") @SerialName("show") val show: Media? = null,
-        @JsonProperty("episode") @SerialName("episode") val episode: EpisodeRef? = null,
-        @JsonProperty("progress") @SerialName("progress") val progress: Double,
-    )
-
-    @Serializable
-    data class WatchlistItem(
-        @JsonProperty("type") @SerialName("type") val type: String = "",
-        @JsonProperty("movie") @SerialName("movie") val movie: Media? = null,
-        @JsonProperty("show") @SerialName("show") val show: Media? = null,
-    )
-
-    @Serializable
-    data class UserSettings(@JsonProperty("user") @SerialName("user") val user: User? = null)
-
-    @Serializable
-    data class User(@JsonProperty("username") @SerialName("username") val username: String? = null)
-
-    // ------------------------------------------------------------------ HTTP
-
-    private fun headers(token: String? = null): Map<String, String> = buildMap {
-        put("Content-Type", "application/json")
-        put("trakt-api-version", "2")
-        put("trakt-api-key", clientId)
-        put("User-Agent", "Flimmer/${BuildConfig.FLIMMER_BUILD}")
-        if (token != null) put("Authorization", "Bearer $token")
-    }
-
-    private suspend fun post(path: String, body: String, token: String? = null) =
-        app.post("$API$path", headers = headers(token), requestBody = body.toRequestBody(JSON))
-
-    /** Gültiges Zugriffstoken, bei Bedarf erneuert; null wenn nicht angemeldet. */
-    private suspend fun accessToken(): String? {
-        val c = ctx ?: return null
-        val p = prefs(c)
-        val access = p.getString(K_ACCESS, null) ?: return null
-        val expires = p.getLong(K_EXPIRES, 0)
-        if (System.currentTimeMillis() / 1000 < expires - 3600) return access
-        val refresh = p.getString(K_REFRESH, null) ?: return access
-        return try {
-            val body = buildMap {
-                put("refresh_token", refresh)
-                put("client_id", clientId)
-                if (clientSecret.isNotBlank() && clientSecret != "null") put("client_secret", clientSecret)
-                put("redirect_uri", REDIRECT)
-                put("grant_type", "refresh_token")
-            }.toJson()
-            val res = post("/oauth/token", body)
-            if (!res.isSuccessful) {
-                Log.w(TAG, "Token-Erneuerung fehlgeschlagen: ${res.code} ${res.text}")
-                if (res.code == 400 || res.code == 401) logout()
-                return null
-            }
-            saveToken(c, parseJson<Token>(res.text))
-            prefs(c).getString(K_ACCESS, null)
-        } catch (t: Throwable) {
-            Log.w(TAG, "Token-Erneuerung", t)
-            access
+    /** Lesezeichen in Flimmer automatisch zu Trakt übertragen */
+    var bookmarksEnabled: Boolean
+        get() = ctx?.let { prefs(it).getBoolean(K_BOOKMARKS, true) } ?: false
+        set(value) {
+            ctx?.let { c -> prefs(c).edit { putBoolean(K_BOOKMARKS, value) } }
         }
-    }
 
-    private fun saveToken(c: Context, t: Token) {
-        val created = if (t.createdAt > 0) t.createdAt else System.currentTimeMillis() / 1000
-        prefs(c).edit {
-            putString(K_ACCESS, t.accessToken)
-            putString(K_REFRESH, t.refreshToken)
-            putLong(K_EXPIRES, created + t.expiresIn)
-        }
-    }
+    private suspend fun token(): String? = repo?.currentAuth()?.token?.accessToken
 
-    fun logout() {
-        ctx?.let { c -> prefs(c).edit { remove(K_ACCESS); remove(K_REFRESH); remove(K_EXPIRES); remove(K_USER) } }
-    }
+    private fun headers(token: String): Map<String, String> = mapOf(
+        "Content-Type" to "application/json",
+        "trakt-api-version" to "2",
+        "trakt-api-key" to TraktApi.clientId,
+        "Authorization" to "Bearer $token",
+    )
 
-    // ------------------------------------------------------------------ Anmeldung per Gerätecode
+    // ------------------------------------------------------------------ IDs der geöffneten Titel
 
-    suspend fun requestDeviceCode(): DeviceCode {
-        if (!isConfigured) throw IllegalStateException("Trakt-Client-ID fehlt (Secret FLIMMER)")
-        val res = post("/oauth/device/code", mapOf("client_id" to clientId).toJson())
-        if (!res.isSuccessful) throw IllegalStateException("Trakt HTTP ${res.code}")
-        return parseJson<DeviceCode>(res.text)
-    }
+    /** Titel-ID (LoadResponse.getId) → Trakt-Sync-ID, damit beim Abspielen gescrobbelt werden kann */
+    private val knownIds = ConcurrentHashMap<Int, String>()
 
-    /**
-     * Wartet, bis der Code auf trakt.tv bestätigt wurde.
-     * @return null bei Erfolg, sonst eine Fehlermeldung
-     */
-    suspend fun pollDeviceToken(code: DeviceCode, isCancelled: () -> Boolean): String? {
-        val c = ctx ?: return "Kein Kontext"
-        val until = System.currentTimeMillis() + code.expiresIn * 1000L
-        var interval = code.interval.coerceAtLeast(1) * 1000L
-        while (System.currentTimeMillis() < until) {
-            delay(interval)
-            if (isCancelled()) return "Abgebrochen"
-            val body = buildMap {
-                put("code", code.deviceCode)
-                put("client_id", clientId)
-                if (clientSecret.isNotBlank() && clientSecret != "null") put("client_secret", clientSecret)
-            }.toJson()
-            val res = try {
-                post("/oauth/device/token", body)
-            } catch (t: Throwable) {
-                continue
-            }
-            when (res.code) {
-                200 -> {
-                    saveToken(c, parseJson<Token>(res.text))
-                    loadUserName()
-                    return null
-                }
-                400 -> Unit // noch nicht bestätigt
-                429 -> interval += 1000L // zu schnell
-                404 -> return "Code ungültig"
-                409 -> return "Code wurde bereits verwendet"
-                410 -> return "Code abgelaufen, bitte neu verbinden"
-                418 -> return "Anmeldung auf trakt.tv abgelehnt"
-                else -> Log.w(TAG, "device/token ${res.code}")
-            }
-        }
-        return "Code abgelaufen, bitte neu verbinden"
-    }
-
-    private suspend fun loadUserName() {
-        val c = ctx ?: return
-        val token = accessToken() ?: return
+    fun rememberIds(response: LoadResponse) {
         try {
-            val res = app.get("$API/users/settings", headers = headers(token))
-            if (res.isSuccessful) {
-                parseJson<UserSettings>(res.text).user?.username?.let { name ->
-                    prefs(c).edit { putString(K_USER, name) }
-                }
-            }
+            response.syncData[AccountManager.traktApi.idPrefix]?.let { knownIds[response.getId()] = it }
         } catch (t: Throwable) {
-            Log.w(TAG, "users/settings", t)
+            Log.w(TAG, "rememberIds", t)
+        }
+    }
+
+    // ------------------------------------------------------------------ Lesezeichen → Trakt
+
+    fun onBookmark(response: LoadResponse, status: WatchType) {
+        if (!isConfigured || !bookmarksEnabled || !isLoggedIn()) return
+        val id = response.syncData[AccountManager.traktApi.idPrefix] ?: return
+        val r = repo ?: return
+        val target = when (status) {
+            WatchType.PLANTOWATCH -> SyncWatchType.PLANTOWATCH
+            WatchType.WATCHING -> SyncWatchType.WATCHING
+            WatchType.COMPLETED -> SyncWatchType.COMPLETED
+            WatchType.DROPPED -> SyncWatchType.DROPPED
+            WatchType.ONHOLD -> SyncWatchType.ONHOLD
+            WatchType.NONE -> SyncWatchType.NONE
+        }
+        scope.launch {
+            try {
+                val current = r.status(id).getOrNull()
+                val newStatus = SyncAPI.SyncStatus(
+                    status = target,
+                    score = current?.score,
+                    watchedEpisodes = current?.watchedEpisodes,
+                    isFavorite = current?.isFavorite,
+                    maxEpisodes = current?.maxEpisodes,
+                )
+                r.updateStatus(id, newStatus)
+            } catch (t: Throwable) {
+                Log.w(TAG, "onBookmark", t)
+            }
         }
     }
 
     // ------------------------------------------------------------------ Scrobbeln
 
-    private data class Active(val id: Int, val body: (Double) -> ScrobbleBody, var started: Boolean, var stopped: Boolean, var lastProgress: Double)
+    private class Active(val id: Int, val body: (Double) -> String) {
+        var started = false
+        var stopped = false
+        var lastProgress = 0.0
+    }
 
     @Volatile private var active: Active? = null
+
+    private fun scrobbleBody(syncId: String, season: Int?, episode: Int?): ((Double) -> String)? {
+        val tid = TraktApi.Companion.TraktId.parse(syncId) ?: return null
+        return if (tid.isShow) {
+            val s = season ?: return null
+            val e = episode ?: return null
+            { p -> mapOf("show" to mapOf("ids" to tid.ids()), "episode" to mapOf("season" to s, "number" to e), "progress" to p).toJson() }
+        } else {
+            { p -> mapOf("movie" to mapOf("ids" to tid.ids()), "progress" to p).toJson() }
+        }
+    }
 
     /** Wird bei jedem Speichern der Wiedergabeposition aufgerufen (DataStoreHelper). */
     fun onProgress(meta: Any?, position: Long, duration: Long) {
         if (!isConfigured || !scrobbleEnabled || !isLoggedIn() || duration <= 0) return
         val ep = meta as? ResultEpisode ?: return
-        if (ep.apiName != FlimmerKatalog.NAME) return
-        val link = try {
-            parseJson<FlimmerKatalog.LinkData>(ep.data)
-        } catch (t: Throwable) {
-            return
-        }
         val progress = (position * 100.0 / duration).coerceIn(0.0, 100.0)
 
         var a = active
         if (a == null || a.id != ep.id) {
-            // Vorherigen Titel pausieren, wenn er nicht fertig war
             a?.let { old -> if (old.started && !old.stopped) send("pause", old.body(old.lastProgress)) }
-            val make: (Double) -> ScrobbleBody = if (link.isTv && link.season != null && link.episode != null) {
-                { p -> ScrobbleBody(show = Media(Ids(tmdb = link.tmdbId)), episode = EpisodeRef(link.season, link.episode), progress = p) }
+            // Katalog-Titel tragen ihre TMDB-ID direkt in den Abspieldaten
+            val body = if (ep.apiName == FlimmerKatalog.NAME) {
+                try {
+                    val link = parseJson<FlimmerKatalog.LinkData>(ep.data)
+                    scrobbleBody(
+                        "${if (link.isTv) "show" else "movie"}:tmdb:${link.tmdbId}",
+                        link.season, link.episode
+                    )
+                } catch (t: Throwable) {
+                    null
+                }
             } else {
-                { p -> ScrobbleBody(movie = Media(Ids(tmdb = link.tmdbId, imdb = link.imdbId)), progress = p) }
-            }
-            a = Active(ep.id, make, started = false, stopped = false, lastProgress = progress)
+                knownIds[ep.parentId]?.let { scrobbleBody(it, ep.season, ep.episode) }
+            } ?: return
+            a = Active(ep.id, body)
             active = a
         }
         a.lastProgress = progress
@@ -281,34 +182,32 @@ object FlimmerTrakt {
         active = null
     }
 
-    private fun send(action: String, body: ScrobbleBody) {
+    private fun send(action: String, body: String) {
         scope.launch {
             try {
-                val token = accessToken() ?: return@launch
-                val res = post("/scrobble/$action", body.toJson(), token)
+                val t = token() ?: return@launch
+                val res = com.lagradost.cloudstream3.app.post(
+                    "$API/scrobble/$action", headers = headers(t), requestBody = body.toRequestBody(JSON)
+                )
                 if (!res.isSuccessful && res.code != 409) Log.w(TAG, "scrobble/$action ${res.code}")
+                if (action == "stop") AccountManager.traktApi.requireLibraryRefresh = true
             } catch (t: Throwable) {
                 Log.w(TAG, "scrobble/$action", t)
             }
         }
     }
 
-    // ------------------------------------------------------------------ Watchlist
+    // ------------------------------------------------------------------ Watchlist für die Startseite
 
-    /** Paare (istSerie, TMDB-ID) aus der Trakt-Watchlist, neueste zuerst. */
+    /** Paare (istSerie, TMDB-ID) aus der Trakt-Watchlist. */
     suspend fun watchlist(limit: Int = 40): List<Pair<Boolean, Int>> {
-        val token = accessToken() ?: return emptyList()
-        val items = mutableListOf<WatchlistItem>()
-        for (type in listOf("movies", "shows")) {
-            val res = app.get("$API/sync/watchlist/$type/added?limit=$limit", headers = headers(token))
-            if (res.isSuccessful) items += parseJson<List<WatchlistItem>>(res.text)
-        }
-        return items.mapNotNull { w ->
-            when (w.type) {
-                "movie" -> w.movie?.ids?.tmdb?.let { false to it }
-                "show" -> w.show?.ids?.tmdb?.let { true to it }
-                else -> null
-            }
+        val r = repo ?: return emptyList()
+        val lib = r.library().getOrNull() ?: return emptyList()
+        // Erste Liste der Bibliothek ist die Watchlist
+        return lib.allLibraryLists.firstOrNull()?.items.orEmpty().mapNotNull { item ->
+            val tid = TraktApi.Companion.TraktId.parse(item.syncId) ?: return@mapNotNull null
+            if (tid.idType != "tmdb") return@mapNotNull null
+            tid.value.toIntOrNull()?.let { tid.isShow to it }
         }.take(limit)
     }
 }

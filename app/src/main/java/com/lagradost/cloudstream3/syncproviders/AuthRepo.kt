@@ -98,6 +98,9 @@ abstract class AuthRepo(open val api: AuthAPI) {
         AccountManager.updateAccounts(idPrefix, newAccounts)
     }
 
+    /** Flimmer: aktuelle, bei Bedarf erneuerte Anmeldedaten (auch ausserhalb der Repos nutzbar) */
+    suspend fun currentAuth(): AuthData? = freshAuth()
+
     fun authData(): AuthData? = synchronized(AccountManager.cachedAccountIds) {
         AccountManager.cachedAccountIds[idPrefix]?.let { id ->
             AccountManager.cachedAccounts[idPrefix]?.firstOrNull { data -> data.user.id == id }

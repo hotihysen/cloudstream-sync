@@ -1856,6 +1856,7 @@ interface LoadResponse {
         var kitsuIdPrefix = "" //kitsuApi.idPrefix
         var aniListIdPrefix = "" //aniListApi.idPrefix
         var simklIdPrefix = "" //simklApi.idPrefix
+        var traktIdPrefix = "" // Flimmer: traktApi.idPrefix
         var isTrailersEnabled = true
 
         /**
@@ -2044,6 +2045,12 @@ interface LoadResponse {
         fun LoadResponse.addImdbId(id: String?) {
             // TODO add IMDb sync
             this.addSimklId(SimklSyncServices.Imdb, id)
+            // Flimmer: Trakt-Sync über IMDb, sofern keine TMDB-ID bekannt ist
+            if (!id.isNullOrBlank() && traktIdPrefix.isNotEmpty() &&
+                this.syncData[traktIdPrefix]?.contains(":tmdb:") != true
+            ) {
+                this.syncData[traktIdPrefix] = "${if (this.isMovie()) "movie" else "show"}:imdb:$id"
+            }
         }
 
         @Suppress("UNUSED_PARAMETER")
@@ -2059,6 +2066,10 @@ interface LoadResponse {
         fun LoadResponse.addTMDbId(id: String?) {
             // TODO add TMDb sync
             this.addSimklId(SimklSyncServices.Tmdb, id)
+            // Flimmer: Trakt-Sync über TMDB
+            if (!id.isNullOrBlank() && traktIdPrefix.isNotEmpty()) {
+                this.syncData[traktIdPrefix] = "${if (this.isMovie()) "movie" else "show"}:tmdb:$id"
+            }
         }
 
         fun LoadResponse.addScore(score: String?, maxValue: Int = 10) {

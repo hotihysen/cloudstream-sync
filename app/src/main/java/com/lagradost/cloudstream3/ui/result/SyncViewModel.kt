@@ -280,6 +280,7 @@ class SyncViewModel : ViewModel() {
             "MAL" -> malApi.idPrefix
             "Kitsu" -> kitsuApi.idPrefix
             "Simkl" -> simklApi.idPrefix
+            "Trakt" -> com.lagradost.cloudstream3.syncproviders.AccountManager.traktApi.idPrefix
             "AniList" -> aniListApi.idPrefix
             else -> syncName
         }

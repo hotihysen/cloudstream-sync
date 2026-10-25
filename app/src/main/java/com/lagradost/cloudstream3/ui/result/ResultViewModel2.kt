@@ -772,6 +772,8 @@ class ResultViewModel2 : ViewModel() {
             }
 
             setResultWatchState(currentId, status.internalId)
+            // Flimmer: Lesezeichen auch zu Trakt übertragen
+            com.lagradost.cloudstream3.flimmer.FlimmerTrakt.onBookmark(response, status)
 
             // We don't need to store if WatchType.NONE.
             // The key is removed in setResultWatchState, we don't want to
@@ -2155,6 +2157,7 @@ class ResultViewModel2 : ViewModel() {
     ) {
         currentId = mainId
         currentResponse = loadResponse
+        com.lagradost.cloudstream3.flimmer.FlimmerTrakt.rememberIds(loadResponse)
         postPage(loadResponse, apiRepository)
         postSubscription(loadResponse)
         postFavorites(loadResponse)
