@@ -1,7 +1,5 @@
-Flimmer 16.4
+Flimmer 16.5
 
-- Trakt: «Am Schauen» und «Abgeschlossen» richten sich jetzt nach dem Fortschritt, den Trakt selbst anzeigt
-- Trakt-Bibliothek: deutsche Poster von TMDB
-- Intro überspringen: Sprungmarken für Anime aus dem Flimmer Katalog (über AniList und AniSkip)
-- «Intro überspringen» (+85 s) jetzt auch bei Serien in den ersten 10 Minuten
-- Sichtbare Versionsnummer (16.4) statt reiner Build-Nummer
+- Neuer Reiter «Flimmer Anime»: Diese Saison, Anime auf Crunchyroll, Netflix, Disney+ und Prime Video, Beliebt, Bestbewertet, Anime-Filme, Genres und Neu erschienen (alles auf Deutsch)
+- Im Flimmer Katalog zusätzlich die Reihe «Anime auf Crunchyroll»
+- Suche im Anime-Reiter zeigt nur Anime

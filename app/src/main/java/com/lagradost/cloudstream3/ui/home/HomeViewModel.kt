@@ -381,7 +381,7 @@ class HomeViewModel : ViewModel() {
 
                         if (currentList.isNotEmpty()) {
                             // Flimmer Katalog: Hero zeigt die aktuellen Trends in Reihenfolge
-                            val katalogTrends = if (api.name == com.lagradost.cloudstream3.flimmer.FlimmerKatalog.NAME) {
+                            val katalogTrends = if (com.lagradost.cloudstream3.flimmer.FlimmerKatalog.isKatalog(api.name)) {
                                 items.firstOrNull { it.list.isNotEmpty() }?.list?.distinctBy { it.url }
                             } else null
                             val randomItems = katalogTrends

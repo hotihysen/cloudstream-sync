@@ -1673,9 +1673,10 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
         // Flimmer Katalog: eingebaute Gesamtübersicht (TMDB, Deutsch) über alle Erweiterungen
         try {
             if (FlimmerKatalog.isConfigured && allProviders.none { it is FlimmerKatalog }) {
-                val katalog = FlimmerKatalog()
-                allProviders.add(katalog)
-                APIHolder.addPluginMapping(katalog)
+                for (katalog in listOf(FlimmerKatalog(), FlimmerKatalog(animeOnly = true))) {
+                    allProviders.add(katalog)
+                    APIHolder.addPluginMapping(katalog)
+                }
                 if (DataStoreHelper.currentHomePage == null) {
                     DataStoreHelper.currentHomePage = FlimmerKatalog.NAME
                 }

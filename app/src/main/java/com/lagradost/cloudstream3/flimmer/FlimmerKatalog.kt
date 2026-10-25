@@ -56,9 +56,25 @@ import java.util.concurrent.atomic.AtomicInteger
  * - Beim Abspielen sucht der Katalog den Titel bei allen installierten Erweiterungen,
  *   öffnet die passenden Treffer und reicht deren Streams an den Player weiter.
  */
-class FlimmerKatalog : MainAPI() {
+/**
+ * @param animeOnly «Flimmer Anime»: eigener Reiter nur mit Anime (Crunchyroll, Saison, Genres)
+ */
+class FlimmerKatalog(private val animeOnly: Boolean = false) : MainAPI() {
     companion object {
         const val NAME = "Flimmer Katalog"
+        const val ANIME_NAME = "Flimmer Anime"
+
+        /** Gehört der Titel zu einem der beiden Flimmer-Kataloge? */
+        fun isKatalog(apiName: String?) = apiName == NAME || apiName == ANIME_NAME
+
+        /** Japanische Animation */
+        private const val A = "with_genres=16&with_original_language=ja"
+        private const val CRUNCHYROLL = 283
+
+        private fun recentDate(days: Int): String {
+            val f = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+            return f.format(java.util.Date(System.currentTimeMillis() - days * 86_400_000L))
+        }
         private const val TAG = "FlimmerKatalog"
         private const val API = "https://api.themoviedb.org/3"
         private const val IMG = "https://image.tmdb.org/t/p"
@@ -98,7 +114,7 @@ class FlimmerKatalog : MainAPI() {
         }
     }
 
-    override var name = NAME
+    override var name = if (animeOnly) ANIME_NAME else NAME
     override var mainUrl = "https://www.themoviedb.org"
     override var lang = "de"
     override val hasMainPage = true
@@ -108,7 +124,22 @@ class FlimmerKatalog : MainAPI() {
     override val loadLinksTimeoutMs: Long = 120_000L
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.AnimeMovie, TvType.Cartoon, TvType.Documentary)
 
-    override val mainPage = mainPageOf(
+    override val mainPage = if (animeOnly) mainPageOf(
+        "discover/tv?$A&sort_by=popularity.desc&air_date.gte=${recentDate(45)}" to "Diese Saison",
+        "discover/tv?$A&sort_by=popularity.desc&watch_region=$REGION&with_watch_providers=$CRUNCHYROLL" to "Anime auf Crunchyroll",
+        "discover/tv?$A&sort_by=popularity.desc" to "Beliebte Anime",
+        "discover/tv?$A&sort_by=popularity.desc&watch_region=$REGION&with_watch_providers=8" to "Anime auf Netflix",
+        "discover/tv?$A&sort_by=popularity.desc&watch_region=$REGION&with_watch_providers=337" to "Anime auf Disney+",
+        "discover/tv?$A&sort_by=popularity.desc&watch_region=$REGION&with_watch_providers=119" to "Anime auf Prime Video",
+        "discover/tv?$A&sort_by=vote_average.desc&vote_count.gte=400" to "Bestbewertete Anime",
+        "discover/movie?$A&sort_by=popularity.desc" to "Anime-Filme",
+        "discover/tv?with_genres=16,10759&with_original_language=ja&sort_by=popularity.desc" to "Action & Abenteuer",
+        "discover/tv?with_genres=16,10765&with_original_language=ja&sort_by=popularity.desc" to "Fantasy & Sci-Fi",
+        "discover/tv?with_genres=16,35&with_original_language=ja&sort_by=popularity.desc" to "Komödie",
+        "discover/tv?with_genres=16,18&with_original_language=ja&sort_by=popularity.desc" to "Drama",
+        "discover/tv?with_genres=16,9648&with_original_language=ja&sort_by=popularity.desc" to "Mystery",
+        "discover/tv?$A&sort_by=first_air_date.desc&vote_count.gte=20&first_air_date.lte=${recentDate(0)}" to "Neu erschienen",
+    ) else mainPageOf(
         "trending/all/week" to "Im Trend",
         "trakt:watchlist" to "Meine Trakt-Watchlist",
         "movie/now_playing?region=$REGION" to "Neu im Kino",
@@ -116,6 +147,7 @@ class FlimmerKatalog : MainAPI() {
         "discover/tv?sort_by=popularity.desc&watch_region=$REGION&with_watch_providers=8" to "Serien auf Netflix",
         "discover/tv?sort_by=popularity.desc&watch_region=$REGION&with_watch_providers=337" to "Serien auf Disney+",
         "discover/tv?sort_by=popularity.desc&watch_region=$REGION&with_watch_providers=119" to "Serien auf Prime Video",
+        "discover/tv?$A&sort_by=popularity.desc&watch_region=$REGION&with_watch_providers=$CRUNCHYROLL" to "Anime auf Crunchyroll",
         "movie/popular" to "Beliebte Filme",
         "tv/popular" to "Beliebte Serien",
         "movie/top_rated" to "Bestbewertete Filme",
@@ -143,6 +175,8 @@ class FlimmerKatalog : MainAPI() {
         @JsonProperty("release_date") @SerialName("release_date") val releaseDate: String? = null,
         @JsonProperty("first_air_date") @SerialName("first_air_date") val firstAirDate: String? = null,
         @JsonProperty("vote_average") @SerialName("vote_average") val voteAverage: Double? = null,
+        @JsonProperty("genre_ids") @SerialName("genre_ids") val genreIds: List<Int> = emptyList(),
+        @JsonProperty("original_language") @SerialName("original_language") val originalLanguage: String? = null,
     )
 
     @Serializable
@@ -316,7 +350,7 @@ class FlimmerKatalog : MainAPI() {
                 year = yearOf(releaseDate)
                 score = Score.from10(voteAverage)
             }
-            "tv" -> newTvSeriesSearchResponse(title, "$mainUrl/tv/$id", TvType.TvSeries, fix = false) {
+            "tv" -> newTvSeriesSearchResponse(title, "$mainUrl/tv/$id", if (animeOnly) TvType.Anime else TvType.TvSeries, fix = false) {
                 posterUrl = img(posterPath)
                 year = yearOf(firstAirDate)
                 score = Score.from10(voteAverage)
@@ -351,7 +385,7 @@ class FlimmerKatalog : MainAPI() {
         val type = typeFromPath(request.data)
         val items = data.results.mapNotNull { it.toSearch(type) }
         // Erste Reihe gross im Querformat, wie bei Streamingdiensten
-        val horizontal = request.data.startsWith("trending")
+        val horizontal = request.data == mainPage.first().data
         return newHomePageResponse(
             HomePageList(request.name, items, isHorizontalImages = horizontal),
             hasNext = data.page < data.totalPages
@@ -361,7 +395,10 @@ class FlimmerKatalog : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         val q = java.net.URLEncoder.encode(query, "UTF-8")
         val data = parseJson<TmdbPage>(tmdb("search/multi", "query=$q&include_adult=false"))
-        return data.results.mapNotNull { it.toSearch() }
+        val results = if (animeOnly) {
+            data.results.filter { it.originalLanguage == "ja" && 16 in it.genreIds }
+        } else data.results
+        return results.mapNotNull { it.toSearch() }
     }
 
     override suspend fun load(url: String): LoadResponse? {

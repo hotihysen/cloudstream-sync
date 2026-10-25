@@ -155,7 +155,7 @@ class FlimmerAniSkip : SkipAPI() {
         episode: ResultEpisode,
         episodeDurationMs: Long
     ): List<SkipStamp>? {
-        if (data.apiName != FlimmerKatalog.NAME) return null
+        if (!FlimmerKatalog.isKatalog(data.apiName)) return null
         val link = try {
             parseJson<FlimmerKatalog.LinkData>(episode.data)
         } catch (t: Throwable) {

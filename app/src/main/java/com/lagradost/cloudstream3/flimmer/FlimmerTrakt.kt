@@ -148,7 +148,7 @@ object FlimmerTrakt {
         if (a == null || a.id != ep.id) {
             a?.let { old -> if (old.started && !old.stopped) send("pause", old.body(old.lastProgress)) }
             // Katalog-Titel tragen ihre TMDB-ID direkt in den Abspieldaten
-            val body = if (ep.apiName == FlimmerKatalog.NAME) {
+            val body = if (FlimmerKatalog.isKatalog(ep.apiName)) {
                 try {
                     val link = parseJson<FlimmerKatalog.LinkData>(ep.data)
                     scrobbleBody(
