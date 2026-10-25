@@ -105,12 +105,12 @@ internal fun amoledScheme() = darkScheme().copy(
     surfaceContainer = CloudStreamPalette.AmoledBlack,
 )
 
-// Flimmer: tiefes Blau-Schwarz statt reinem Schwarz (passend zu den XML-Farben der App)
+// Flimmer: Netflix-nahes neutrales Schwarz (passend zu den XML-Farben der App)
 internal fun amoledLightScheme() = amoledScheme().copy(
-    background = androidx.compose.ui.graphics.Color(0xFF0E0D15),
-    surfaceVariant = androidx.compose.ui.graphics.Color(0xFF221F2E),
-    surface = androidx.compose.ui.graphics.Color(0xFF191724),
-    surfaceContainer = androidx.compose.ui.graphics.Color(0xFF16141F),
+    background = androidx.compose.ui.graphics.Color(0xFF141414),
+    surfaceVariant = androidx.compose.ui.graphics.Color(0xFF2A2A2A),
+    surface = androidx.compose.ui.graphics.Color(0xFF1C1C1C),
+    surfaceContainer = androidx.compose.ui.graphics.Color(0xFF181818),
 )
 
 internal fun lightScheme() = CloudStreamColorScheme(

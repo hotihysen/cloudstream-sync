@@ -239,6 +239,16 @@ object SearchResultBuilder {
 
         itemView.setOnFocusChangeListener { view, b ->
             focus(view, b)
+            // Flimmer: ausgewählte Kachel auf dem TV sanft vergrössern (wie bei Netflix)
+            if (isLayout(TV)) {
+                view.animate()
+                    .scaleX(if (b) 1.08f else 1f)
+                    .scaleY(if (b) 1.08f else 1f)
+                    .translationZ(if (b) 12f else 0f)
+                    .setDuration(180)
+                    .setInterpolator(android.view.animation.DecelerateInterpolator())
+                    .start()
+            }
         }
 
         when (card) {
