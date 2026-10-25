@@ -62,15 +62,24 @@ import java.util.concurrent.atomic.AtomicLong
  *   öffnet die passenden Treffer und reicht deren Streams an den Player weiter.
  */
 /**
- * @param animeOnly «Flimmer Anime»: eigener Reiter nur mit Anime (Crunchyroll, Saison, Genres)
+ * @param mode Bereich: alles, nur Serien, nur Filme oder nur Anime (eigene Reiter auf der Startseite)
  */
-class FlimmerKatalog(private val animeOnly: Boolean = false) : MainAPI() {
+class FlimmerKatalog(private val mode: Mode = Mode.ALL) : MainAPI() {
+    enum class Mode { ALL, SERIES, MOVIES, ANIME }
+
     companion object {
         const val NAME = "Flimmer Katalog"
         const val ANIME_NAME = "Flimmer Anime"
+        const val SERIES_NAME = "Flimmer Serien"
+        const val MOVIES_NAME = "Flimmer Filme"
 
-        /** Gehört der Titel zu einem der beiden Flimmer-Kataloge? */
-        fun isKatalog(apiName: String?) = apiName == NAME || apiName == ANIME_NAME
+        /** Gehört der Titel zu einem der Flimmer-Kataloge? */
+        fun isKatalog(apiName: String?) =
+            apiName == NAME || apiName == ANIME_NAME || apiName == SERIES_NAME || apiName == MOVIES_NAME
+
+        /** Detailseite → textfreies Poster im Hochformat für die Hero-Karte auf dem Handy */
+        private val heroPosters = ConcurrentHashMap<String, String>()
+        fun heroPoster(url: String?): String? = url?.let { heroPosters[it] }
 
         /** Japanische Animation */
         private const val A = "with_genres=16&with_original_language=ja"
@@ -123,7 +132,12 @@ class FlimmerKatalog(private val animeOnly: Boolean = false) : MainAPI() {
         }
     }
 
-    override var name = if (animeOnly) ANIME_NAME else NAME
+    override var name = when (mode) {
+        Mode.ALL -> NAME
+        Mode.SERIES -> SERIES_NAME
+        Mode.MOVIES -> MOVIES_NAME
+        Mode.ANIME -> ANIME_NAME
+    }
     override var mainUrl = "https://www.themoviedb.org"
     override var lang = "de"
     override val hasMainPage = true
@@ -133,7 +147,42 @@ class FlimmerKatalog(private val animeOnly: Boolean = false) : MainAPI() {
     override val loadLinksTimeoutMs: Long = 120_000L
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.AnimeMovie, TvType.Cartoon, TvType.Documentary)
 
-    override val mainPage = if (animeOnly) mainPageOf(
+    override val mainPage = if (mode == Mode.SERIES) mainPageOf(
+        "trending/tv/week" to "Serien im Trend",
+        "tv/on_the_air" to "Neue Folgen",
+        "discover/tv?sort_by=popularity.desc&watch_region=$REGION&with_watch_providers=8" to "Serien auf Netflix",
+        "discover/tv?sort_by=popularity.desc&watch_region=$REGION&with_watch_providers=337" to "Serien auf Disney+",
+        "discover/tv?sort_by=popularity.desc&watch_region=$REGION&with_watch_providers=119" to "Serien auf Prime Video",
+        "discover/tv?sort_by=popularity.desc&watch_region=$REGION&with_watch_providers=350" to "Serien auf Apple TV+",
+        "tv/popular" to "Beliebte Serien",
+        "tv/top_rated" to "Bestbewertete Serien",
+        "discover/tv?with_genres=80&sort_by=popularity.desc" to "Krimi",
+        "discover/tv?with_genres=18&sort_by=popularity.desc" to "Drama",
+        "discover/tv?with_genres=35&sort_by=popularity.desc" to "Komödie",
+        "discover/tv?with_genres=10759&sort_by=popularity.desc" to "Action & Abenteuer",
+        "discover/tv?with_genres=10765&sort_by=popularity.desc" to "Sci-Fi & Fantasy",
+        "discover/tv?with_genres=9648&sort_by=popularity.desc" to "Mystery",
+        "discover/tv?with_origin_country=KR&sort_by=popularity.desc" to "K-Dramen",
+        "discover/tv?with_genres=99&sort_by=popularity.desc" to "Dokuserien",
+    ) else if (mode == Mode.MOVIES) mainPageOf(
+        "trending/movie/week" to "Filme im Trend",
+        "movie/now_playing?region=$REGION" to "Neu im Kino",
+        "movie/upcoming?region=$REGION" to "Demnächst",
+        "discover/movie?sort_by=popularity.desc&watch_region=$REGION&with_watch_providers=8" to "Filme auf Netflix",
+        "discover/movie?sort_by=popularity.desc&watch_region=$REGION&with_watch_providers=337" to "Filme auf Disney+",
+        "discover/movie?sort_by=popularity.desc&watch_region=$REGION&with_watch_providers=119" to "Filme auf Prime Video",
+        "movie/popular" to "Beliebte Filme",
+        "movie/top_rated" to "Bestbewertete Filme",
+        "discover/movie?with_genres=28&sort_by=popularity.desc" to "Action",
+        "discover/movie?with_genres=35&sort_by=popularity.desc" to "Komödie",
+        "discover/movie?with_genres=53&sort_by=popularity.desc" to "Thriller",
+        "discover/movie?with_genres=80&sort_by=popularity.desc" to "Krimi",
+        "discover/movie?with_genres=27&sort_by=popularity.desc" to "Horror",
+        "discover/movie?with_genres=878&sort_by=popularity.desc" to "Science-Fiction",
+        "discover/movie?with_genres=10749&sort_by=popularity.desc" to "Romantik",
+        "discover/movie?with_genres=10751&sort_by=popularity.desc" to "Familie",
+        "discover/movie?with_genres=16&sort_by=popularity.desc" to "Animation",
+    ) else if (mode == Mode.ANIME) mainPageOf(
         "discover/tv?$A&sort_by=popularity.desc&air_date.gte=${recentDate(45)}" to "Diese Saison",
         "discover/tv?$A&sort_by=popularity.desc&watch_region=$REGION&with_watch_providers=$CRUNCHYROLL" to "Anime auf Crunchyroll",
         "discover/tv?$A&sort_by=popularity.desc" to "Beliebte Anime",
@@ -231,7 +280,10 @@ class FlimmerKatalog(private val animeOnly: Boolean = false) : MainAPI() {
     data class TmdbPosters(@JsonProperty("posters") @SerialName("posters") val posters: List<TmdbImage> = emptyList())
 
     @Serializable
-    data class TmdbImages(@JsonProperty("logos") @SerialName("logos") val logos: List<TmdbImage> = emptyList())
+    data class TmdbImages(
+        @JsonProperty("logos") @SerialName("logos") val logos: List<TmdbImage> = emptyList(),
+        @JsonProperty("posters") @SerialName("posters") val posters: List<TmdbImage> = emptyList(),
+    )
 
     @Serializable
     data class TmdbAltTitle(
@@ -359,7 +411,7 @@ class FlimmerKatalog(private val animeOnly: Boolean = false) : MainAPI() {
                 year = yearOf(releaseDate)
                 score = Score.from10(voteAverage)
             }
-            "tv" -> newTvSeriesSearchResponse(title, "$mainUrl/tv/$id", if (animeOnly) TvType.Anime else TvType.TvSeries, fix = false) {
+            "tv" -> newTvSeriesSearchResponse(title, "$mainUrl/tv/$id", if (mode == Mode.ANIME) TvType.Anime else TvType.TvSeries, fix = false) {
                 posterUrl = img(posterPath)
                 year = yearOf(firstAirDate)
                 score = Score.from10(voteAverage)
@@ -404,9 +456,12 @@ class FlimmerKatalog(private val animeOnly: Boolean = false) : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         val q = java.net.URLEncoder.encode(query, "UTF-8")
         val data = parseJson<TmdbPage>(tmdb("search/multi", "query=$q&include_adult=false"))
-        val results = if (animeOnly) {
-            data.results.filter { it.originalLanguage == "ja" && 16 in it.genreIds }
-        } else data.results
+        val results = when (mode) {
+            Mode.ANIME -> data.results.filter { it.originalLanguage == "ja" && 16 in it.genreIds }
+            Mode.SERIES -> data.results.filter { it.mediaType == "tv" }
+            Mode.MOVIES -> data.results.filter { it.mediaType == "movie" }
+            Mode.ALL -> data.results
+        }
         return results.mapNotNull { it.toSearch() }
     }
 
@@ -434,6 +489,10 @@ class FlimmerKatalog(private val animeOnly: Boolean = false) : MainAPI() {
         val recs = d.recommendations?.results?.mapNotNull { it.toSearch(kind) }
         val cast = d.credits?.cast?.take(20)?.map { Actor(it.name, img(it.profilePath, "w185")) to it.character }
         val alt = altTitles(d, title)
+        // Textfreies Poster (ohne Sprache) für die Hero-Karte, sonst das deutsche
+        (d.images?.posters?.firstOrNull { it.lang == null || it.lang == "xx" }
+            ?: d.images?.posters?.firstOrNull { it.lang == "de" })
+            ?.let { heroPosters[url] = "$IMG/w780${it.filePath}" }
         // Japanische Animation als Anime kennzeichnen (Sprungmarken über AniSkip, Skip-Knopf im Player)
         val isAnime = d.originalLanguage == "ja" && d.genres.any { it.id == 16 }
 

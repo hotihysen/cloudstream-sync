@@ -3,4 +3,5 @@
     <!-- Flimmer: weichere Ecken bei Postern und Karten -->
     <dimen name="rounded_image_radius">14dp</dimen>
     <dimen name="card_corner_radius">8dp</dimen>
+    <dimen name="nav_view_height">64dp</dimen>
 </resources>

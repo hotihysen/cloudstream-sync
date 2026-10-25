@@ -13,154 +13,195 @@
         android:layout_width="match_parent"
         android:layout_height="0dp" />
 
+    <!-- Flimmer: Kopfzeile mit Suche und Profil über der Hero-Karte -->
+    <LinearLayout
+        android:id="@+id/home_padding"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp">
+
+        <androidx.appcompat.widget.SearchView
+            android:id="@+id/home_search"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginEnd="8dp"
+            android:layout_weight="1"
+            android:editTextColor="@color/white"
+            android:gravity="center_vertical"
+            android:iconifiedByDefault="true"
+            android:nextFocusRight="@id/home_head_profile_padding"
+            android:padding="0dp"
+            android:textColor="@color/white"
+            android:textColorHint="@color/white"
+            app:closeIcon="@drawable/ic_baseline_close_24"
+            app:iconifiedByDefault="true"
+            app:queryBackground="@color/transparent"
+            app:queryHint="@string/search_hint"
+            app:searchIcon="@drawable/search_icon"
+            tools:ignore="RtlSymmetry" />
+
+        <LinearLayout
+            android:id="@+id/home_head_profile_padding"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:foreground="@drawable/rounded_select_ripple"
+            android:gravity="center"
+            android:nextFocusLeft="@id/home_search"
+            android:orientation="horizontal">
+
+            <androidx.cardview.widget.CardView
+                android:id="@+id/home_head_profile_card"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_gravity="center"
+                android:background="@color/transparent"
+                android:focusable="true"
+                app:cardCornerRadius="8dp">
+
+                <ImageView
+                    android:id="@+id/home_head_profile_pic"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:contentDescription="@string/account"
+                    android:scaleType="centerCrop"
+                    tools:src="@drawable/profile_bg_orange" />
+            </androidx.cardview.widget.CardView>
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Flimmer: Bereiche wie Reiter (Alles, Serien, Filme, Anime) -->
+    <HorizontalScrollView
+        android:id="@+id/flimmer_chip_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:clipToPadding="false"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:scrollbars="none">
+
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/flimmer_chips"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:chipSpacingHorizontal="8dp"
+            app:selectionRequired="true"
+            app:singleLine="true"
+            app:singleSelection="true">
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/flimmer_chip_all"
+                style="@style/FlimmerChip"
+                android:text="Alles" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/flimmer_chip_series"
+                style="@style/FlimmerChip"
+                android:text="Serien" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/flimmer_chip_movies"
+                style="@style/FlimmerChip"
+                android:text="Filme" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/flimmer_chip_anime"
+                style="@style/FlimmerChip"
+                android:text="Anime" />
+        </com.google.android.material.chip.ChipGroup>
+    </HorizontalScrollView>
+
+    <!-- Flimmer: Hero als abgerundete Karte im Hochformat -->
     <FrameLayout
         android:id="@+id/home_preview_viewpager_text"
         android:layout_width="match_parent"
-        android:layout_height="500dp">
+        android:layout_height="560dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="12dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="8dp"
+        android:background="@drawable/flimmer_hero_card"
+        android:elevation="6dp"
+        android:foreground="@drawable/flimmer_hero_border">
 
         <androidx.viewpager2.widget.ViewPager2
             android:id="@+id/home_preview_viewpager"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:orientation="horizontal">
-
-        </androidx.viewpager2.widget.ViewPager2>
+            android:orientation="horizontal" />
 
         <include layout="@layout/loading_hero_banner" />
 
         <LinearLayout
-            android:id="@+id/home_padding"
-            android:layout_width="match_parent"
-            android:layout_height="50dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingHorizontal="0dp">
-
-
-            <androidx.appcompat.widget.SearchView
-                android:id="@+id/home_search"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_marginEnd="8dp"
-                android:layout_weight="1"
-                android:editTextColor="@color/white"
-                android:gravity="center_vertical"
-                android:iconifiedByDefault="true"
-                android:nextFocusRight="@id/home_head_profile_padding"
-                android:padding="0dp"
-                android:textColor="@color/white"
-                android:textColorHint="@color/white"
-                app:closeIcon="@drawable/ic_baseline_close_24"
-                app:iconifiedByDefault="true"
-                app:queryBackground="@color/transparent"
-                app:queryHint="@string/search_hint"
-                app:searchIcon="@drawable/search_icon"
-                tools:ignore="RtlSymmetry" />
-
-            <LinearLayout
-                android:id="@+id/home_head_profile_padding"
-                android:layout_width="50dp"
-                android:layout_height="50dp"
-                android:clickable="true"
-                android:focusable="true"
-                android:foreground="@drawable/rounded_select_ripple"
-                android:gravity="center"
-                android:nextFocusLeft="@id/home_search"
-                android:orientation="horizontal">
-
-                <androidx.cardview.widget.CardView
-                    android:id="@+id/home_head_profile_card"
-                    android:layout_width="30dp"
-                    android:layout_height="30dp"
-                    android:layout_gravity="center"
-                    android:background="@color/transparent"
-                    android:focusable="true"
-                    android:foreground="@drawable/outline_big_15_gray"
-                    app:cardCornerRadius="20dp">
-
-                    <ImageView
-                        android:id="@+id/home_head_profile_pic"
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:contentDescription="@string/account"
-                        android:scaleType="centerCrop"
-                        tools:src="@drawable/profile_bg_orange" />
-                </androidx.cardview.widget.CardView>
-            </LinearLayout>
-        </LinearLayout>
-
-        <!--
-                        <TextView
-                            android:visibility="gone"
-                            android:id="@+id/test_search"
-                            android:background="?android:attr/selectableItemBackgroundBorderless"
-                            android:layout_gravity="start"
-                            android:gravity="center"
-
-                            android:textSize="20dp"
-                            android:layout_margin="20dp"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/search"
-                            android:textColor="@color/white"
-                            app:drawableLeftCompat="@drawable/search_icon"
-                            app:tint="@color/white" />
-        -->
-
-        <LinearLayout
             android:id="@+id/home_preview_title_holder"
             android:layout_width="match_parent"
-            android:layout_height="100dp"
+            android:layout_height="wrap_content"
             android:layout_gravity="bottom"
-            android:gravity="center"
-            android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/home_preview_bookmark"
-                android:layout_width="70dp"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center"
-                android:layout_marginStart="25dp"
-                android:layout_marginEnd="25dp"
-                android:background="?android:attr/selectableItemBackgroundBorderless"
-                android:gravity="center"
-                android:text="@string/none"
-                android:textColor="?attr/white"
-                app:drawableTint="?attr/white"
-                app:drawableTopCompat="@drawable/ic_baseline_add_24"
-                app:tint="?attr/white" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="14dp"
+            android:paddingTop="10dp"
+            android:paddingEnd="14dp"
+            android:paddingBottom="14dp">
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/home_preview_play"
                 style="@style/WhiteButton"
-                android:layout_width="wrap_content"
-                android:layout_gravity="center"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="8dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
                 android:text="@string/home_play"
-                app:icon="@drawable/ic_baseline_play_arrow_24" />
+                android:textSize="16sp"
+                android:textStyle="bold"
+                app:cornerRadius="8dp"
+                app:icon="@drawable/ic_baseline_play_arrow_24"
+                app:iconGravity="textStart" />
+
+            <TextView
+                android:id="@+id/home_preview_bookmark"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="8dp"
+                android:background="@drawable/flimmer_button_glass"
+                android:drawablePadding="6dp"
+                android:ellipsize="end"
+                android:foreground="?android:attr/selectableItemBackground"
+                android:gravity="center"
+                android:maxLines="1"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
+                android:text="@string/none"
+                android:textColor="@color/white"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                app:drawableTint="@color/white" />
 
             <TextView
                 android:id="@+id/home_preview_info"
-                android:layout_width="70dp"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center"
-                android:layout_marginStart="25dp"
-                android:layout_marginEnd="25dp"
-                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="@drawable/flimmer_button_glass"
+                android:contentDescription="@string/home_info"
+                android:foreground="?android:attr/selectableItemBackground"
                 android:gravity="center"
-                android:text="@string/home_info"
-                android:textColor="?attr/white"
-                app:drawableTint="?attr/white"
-                app:drawableTopCompat="@drawable/ic_outline_info_24"
-                app:tint="?attr/white" />
-
+                android:paddingTop="12dp"
+                app:drawableTint="@color/white"
+                app:drawableTopCompat="@drawable/ic_outline_info_24" />
         </LinearLayout>
-
     </FrameLayout>
 
     <LinearLayout
         android:id="@+id/alternative_account_padding"
         android:layout_width="match_parent"
-        android:layout_height="50dp"
+        android:layout_height="0dp"
         android:gravity="end"
         android:orientation="horizontal"
         android:paddingHorizontal="0dp">

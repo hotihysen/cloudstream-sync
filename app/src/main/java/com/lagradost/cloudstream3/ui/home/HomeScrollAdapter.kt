@@ -58,7 +58,10 @@ class HomeScrollAdapter(
 
         when (binding) {
             is HomeScrollViewBinding -> {
-                binding.homeScrollPreview.loadImage(posterUrl, item.posterHeaders)
+                // Flimmer: Handy-Hero im Hochformat, beim Katalog mit textfreiem Poster
+                val portrait = com.lagradost.cloudstream3.flimmer.FlimmerKatalog.heroPoster(item.url)
+                    ?: item.posterUrl ?: posterUrl
+                binding.homeScrollPreview.loadImage(portrait, item.posterHeaders)
                 binding.homeScrollPreviewTags.apply {
                     text = item.tags?.joinToString(" • ") ?: ""
                     isGone = item.tags.isNullOrEmpty()

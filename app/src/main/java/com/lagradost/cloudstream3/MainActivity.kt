@@ -1292,12 +1292,20 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
         }
 
         binding?.apply {
-            fixSystemBarsPadding(
-                navView,
-                heightResId = R.dimen.nav_view_height,
-                padTop = false,
-                overlayCutout = false
-            )
+            // Flimmer: schwebende Navigationsleiste, Abstand zur Systemleiste als Aussenabstand
+            androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(navView) { view, insets ->
+                val sys = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+                val density = view.resources.displayMetrics.density
+                (view.layoutParams as? android.view.ViewGroup.MarginLayoutParams)?.let { lp ->
+                    lp.bottomMargin = sys.bottom + (10 * density).toInt()
+                    lp.leftMargin = sys.left + (16 * density).toInt()
+                    lp.rightMargin = sys.right + (16 * density).toInt()
+                    lp.height = view.resources.getDimensionPixelSize(R.dimen.nav_view_height)
+                    view.layoutParams = lp
+                }
+                view.setPadding(0, 0, 0, 0)
+                insets
+            }
 
             fixSystemBarsPadding(
                 navRailView,
@@ -1673,7 +1681,7 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
         // Flimmer Katalog: eingebaute Gesamtübersicht (TMDB, Deutsch) über alle Erweiterungen
         try {
             if (FlimmerKatalog.isConfigured && allProviders.none { it is FlimmerKatalog }) {
-                for (katalog in listOf(FlimmerKatalog(), FlimmerKatalog(animeOnly = true))) {
+                for (katalog in FlimmerKatalog.Mode.entries.map { FlimmerKatalog(it) }) {
                     allProviders.add(katalog)
                     APIHolder.addPluginMapping(katalog)
                 }

@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.os.Parcelable
 import android.view.LayoutInflater
 import android.view.View
+import android.widget.TextView
 import android.view.ViewGroup
 import android.widget.ImageView
 import androidx.appcompat.app.AlertDialog
@@ -35,6 +36,7 @@ import com.lagradost.cloudstream3.mvvm.logError
 import com.lagradost.cloudstream3.mvvm.observe
 import com.lagradost.cloudstream3.ui.ViewHolderState
 import com.lagradost.cloudstream3.ui.WatchType
+import com.lagradost.cloudstream3.flimmer.FlimmerKatalog
 import com.lagradost.cloudstream3.ui.account.AccountHelper.showAccountEditDialog
 import com.lagradost.cloudstream3.ui.account.AccountHelper.showAccountSelectLinear
 import com.lagradost.cloudstream3.ui.account.AccountViewModel
@@ -434,16 +436,7 @@ class HomeParentItemAdapterPreview(
                 val id = item.getId()
                 val watchType =
                     DataStoreHelper.getResultWatchState(id)
-                homePreviewBookmark.setText(watchType.stringRes)
-                homePreviewBookmark.setCompoundDrawablesWithIntrinsicBounds(
-                    null,
-                    ContextCompat.getDrawable(
-                        homePreviewBookmark.context,
-                        watchType.iconRes
-                    ),
-                    null,
-                    null
-                )
+                homePreviewBookmark.setFlimmerBookmark(watchType)
 
                 homePreviewBookmark.setOnClickListener { fab ->
                     fab.context.getActivity()?.showBottomDialog(
@@ -463,16 +456,7 @@ class HomeParentItemAdapterPreview(
                         ) { statusChanged: Boolean ->
                             if (!statusChanged) return@updateWatchStatus
 
-                            homePreviewBookmark.setCompoundDrawablesWithIntrinsicBounds(
-                                null,
-                                ContextCompat.getDrawable(
-                                    homePreviewBookmark.context,
-                                    newValue.iconRes
-                                ),
-                                null,
-                                null
-                            )
-                            homePreviewBookmark.setText(newValue.stringRes)
+                            homePreviewBookmark.setFlimmerBookmark(newValue)
                         }
                     }
                 }
@@ -640,6 +624,21 @@ class HomeParentItemAdapterPreview(
             }
 
             (binding as? FragmentHomeHeadBinding)?.apply {
+                // Flimmer: Hero als abgerundete Karte
+                homePreviewViewpagerText.clipToOutline = true
+                homePreviewViewpagerText.outlineProvider = android.view.ViewOutlineProvider.BACKGROUND
+
+                // Flimmer: Reiter Alles / Serien / Filme / Anime
+                flimmerChipScroll.isVisible = FlimmerKatalog.isConfigured
+                flimmerChipTargets().forEach { (chip, name) ->
+                    chip.setOnClickListener {
+                        if (viewModel.apiName.value != name) {
+                            viewModel.loadAndCancel(name, forceReload = false, fromUI = true)
+                        }
+                        syncFlimmerChips(name)
+                    }
+                }
+
                 homeSearch.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
                     override fun onQueryTextSubmit(query: String): Boolean {
                         viewModel.queryTextSubmit(query)
@@ -654,8 +653,31 @@ class HomeParentItemAdapterPreview(
             }
         }
 
+        private fun flimmerChipTargets(): List<Pair<com.google.android.material.chip.Chip, String>> {
+            val b = binding as? FragmentHomeHeadBinding ?: return emptyList()
+            return listOf(
+                b.flimmerChipAll to FlimmerKatalog.NAME,
+                b.flimmerChipSeries to FlimmerKatalog.SERIES_NAME,
+                b.flimmerChipMovies to FlimmerKatalog.MOVIES_NAME,
+                b.flimmerChipAnime to FlimmerKatalog.ANIME_NAME,
+            )
+        }
+
+        private fun syncFlimmerChips(apiName: String?) {
+            val targets = flimmerChipTargets()
+            targets.forEach { (chip, name) -> chip.isChecked = name == apiName }
+        }
+
+        private fun TextView.setFlimmerBookmark(type: WatchType) {
+            val icon = if (type == WatchType.NONE) R.drawable.ic_baseline_add_24 else R.drawable.ic_baseline_check_24
+            if (type == WatchType.NONE) text = "Meine Liste" else setText(type.stringRes)
+            setCompoundDrawablesRelativeWithIntrinsicBounds(
+                ContextCompat.getDrawable(context, icon), null, null, null
+            )
+        }
+
         private fun updatePreview(preview: Resource<Pair<Boolean, List<LoadResponse>>>) {
-            if (preview is Resource.Success) {
+            if (preview is Resource.Success && binding !is FragmentHomeHeadBinding) {
                 homeNonePadding.apply {
                     val params = layoutParams
                     params.height = 0
@@ -790,6 +812,9 @@ class HomeParentItemAdapterPreview(
             previewViewpager.apply {
                 observe(viewModel.preview) {
                     updatePreview(it)
+                }
+                observe(viewModel.apiName) { name ->
+                    syncFlimmerChips(name)
                 }
                 /*if (binding is FragmentHomeHeadTvBinding) {
                     observe(viewModel.apiName) { name ->
