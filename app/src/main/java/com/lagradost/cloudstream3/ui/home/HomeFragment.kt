@@ -619,6 +619,66 @@ class HomeFragment : BaseFragment<FragmentHomeBinding>(
         super.onDestroyView()
     }
 
+    // ------------------------------------------------------------------ Flimmer: Reiter auf dem Fernseher
+
+    private var flimmerTvTabs: List<Pair<com.google.android.material.button.MaterialButton, String?>> = emptyList()
+
+    private fun setupFlimmerTvTabs(root: View) {
+        val holder = root.findViewById<View>(R.id.flimmer_tv_tabs) ?: return
+        if (isLayout(PHONE) || !com.lagradost.cloudstream3.flimmer.FlimmerKatalog.isConfigured) {
+            holder.isVisible = false
+            flimmerTvTabs = emptyList()
+            return
+        }
+        holder.isVisible = true
+        // «Weitere Quellen» ersetzt den bisherigen Knopf zur Wahl der Startseite
+        root.findViewById<View>(R.id.home_change_api)?.isVisible = false
+        root.findViewById<View>(R.id.home_preview_search_button)?.nextFocusLeftId = R.id.flimmer_tv_tab_more
+        val K = com.lagradost.cloudstream3.flimmer.FlimmerKatalog
+        flimmerTvTabs = listOf(
+            R.id.flimmer_tv_tab_all to K.NAME,
+            R.id.flimmer_tv_tab_series to K.SERIES_NAME,
+            R.id.flimmer_tv_tab_movies to K.MOVIES_NAME,
+            R.id.flimmer_tv_tab_anime to K.ANIME_NAME,
+            R.id.flimmer_tv_tab_more to null,
+        ).mapNotNull { (id, name) ->
+            root.findViewById<com.google.android.material.button.MaterialButton>(id)?.let { it to name }
+        }
+        flimmerTvTabs.forEach { (button, name) ->
+            if (name == null) {
+                button.setOnClickListener(apiChangeClickListener)
+            } else {
+                button.setOnClickListener {
+                    if (homeViewModel.apiName.value != name) {
+                        homeViewModel.loadAndCancel(name, forceReload = true, fromUI = true)
+                    }
+                    syncFlimmerTvTabs(name)
+                }
+            }
+        }
+        flimmerTvTabs.firstOrNull()?.first?.requestFocus()
+    }
+
+    private fun syncFlimmerTvTabs(apiName: String?) {
+        val tabs = flimmerTvTabs
+        if (tabs.isEmpty()) return
+        val known = tabs.any { it.second != null && it.second == apiName }
+        tabs.forEach { (button, name) ->
+            val active = if (name == null) !known else name == apiName
+            button.isSelected = active
+            button.setTypeface(null, if (active) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+            // Aktiver Reiter: orange Unterstreichung wie bei Streamingdiensten
+            button.paint.isUnderlineText = false
+            button.setTextColor(
+                if (active) androidx.core.content.ContextCompat.getColorStateList(button.context, R.color.flimmer_tab_active)
+                else androidx.core.content.ContextCompat.getColorStateList(button.context, R.color.player_on_button_tv_attr)
+            )
+            if (name == null) {
+                button.text = if (!known && apiName != null) (context?.getDisplayName(apiName) ?: apiName) else "Weitere Quellen"
+            }
+        }
+    }
+
     private val apiChangeClickListener = View.OnClickListener { view ->
         view.context.selectHomepage(currentApiName) { api ->
             homeViewModel.loadAndCancel(api, forceReload = true, fromUI = true)
@@ -701,6 +761,7 @@ class HomeFragment : BaseFragment<FragmentHomeBinding>(
 
             // Flimmer: Auswahl der Startseite erfolgt über die Reiter oben
             homeApiFab.isVisible = isLayout(PHONE) && !com.lagradost.cloudstream3.flimmer.FlimmerKatalog.isConfigured
+            setupFlimmerTvTabs(root)
             // Flimmer: Statusleiste abdecken
             root.findViewById<View>(R.id.flimmer_status_scrim)?.let {
                 com.lagradost.cloudstream3.utils.UIHelper.fixPaddingStatusbarView(it)
@@ -834,6 +895,7 @@ class HomeFragment : BaseFragment<FragmentHomeBinding>(
                 homePreviewReloadProvider.isGone = (apiName == noneApi.name)
                 homePreviewSearchButton.isGone = (apiName == noneApi.name)
             }
+            syncFlimmerTvTabs(apiName)
         }
 
         observe(homeViewModel.page) { data ->

@@ -589,6 +589,9 @@ class HomeParentItemAdapterPreview(
                     viewModel.queryTextSubmit("")
                 }*/
 
+                // Flimmer: nach oben zu den Reitern
+                if (FlimmerKatalog.isConfigured) homePreviewInfoBtt.nextFocusUpId = R.id.flimmer_tv_tab_all
+
                 // A workaround to the focus problem of always centering the view on focus
                 // as that causes higher android versions to stretch the ui when switching between shows
                 var lastFocusTimeoutMs = 0L
@@ -597,6 +600,7 @@ class HomeParentItemAdapterPreview(
                     // Always reset timer, as we only want to update
                     // it if we have not interacted in half a second
                     lastFocusTimeoutMs = System.currentTimeMillis()
+                    flimmerTvHint.visibility = if (hasFocus) View.VISIBLE else View.INVISIBLE
                     if (!hasFocus) return@setOnFocusChangeListener
                     if (lastFocusMs + 500L < System.currentTimeMillis()) {
                         MainActivity.centerView(view)

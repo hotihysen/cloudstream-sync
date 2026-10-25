@@ -152,6 +152,103 @@
             android:layout_gravity="start"
             android:layout_margin="10dp" />
 
+    <!-- Flimmer: Reiter für den Fernseher -->
+    <LinearLayout
+        android:id="@+id/flimmer_tv_tabs"
+        android:layout_width="wrap_content"
+        android:layout_height="40dp"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_margin="10dp"
+        android:orientation="horizontal"
+        android:visibility="gone"
+        tools:visibility="visible">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/flimmer_tv_tab_all"
+            style="@style/RegularButtonTV"
+            android:layout_width="wrap_content"
+            android:layout_marginStart="4dp"
+            android:layout_marginEnd="4dp"
+            android:paddingStart="18dp"
+            android:paddingEnd="18dp"
+            android:letterSpacing="0"
+            android:textAllCaps="false"
+            android:textSize="15sp"
+            android:text="Alles"
+            android:nextFocusLeft="@id/navigation_home"
+            android:nextFocusRight="@id/flimmer_tv_tab_series"
+            android:nextFocusUp="@id/flimmer_tv_tab_all"
+            android:nextFocusDown="@id/home_preview_info_btt" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/flimmer_tv_tab_series"
+            style="@style/RegularButtonTV"
+            android:layout_width="wrap_content"
+            android:layout_marginStart="4dp"
+            android:layout_marginEnd="4dp"
+            android:paddingStart="18dp"
+            android:paddingEnd="18dp"
+            android:letterSpacing="0"
+            android:textAllCaps="false"
+            android:textSize="15sp"
+            android:text="Serien"
+            android:nextFocusLeft="@id/flimmer_tv_tab_all"
+            android:nextFocusRight="@id/flimmer_tv_tab_movies"
+            android:nextFocusUp="@id/flimmer_tv_tab_series"
+            android:nextFocusDown="@id/home_preview_info_btt" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/flimmer_tv_tab_movies"
+            style="@style/RegularButtonTV"
+            android:layout_width="wrap_content"
+            android:layout_marginStart="4dp"
+            android:layout_marginEnd="4dp"
+            android:paddingStart="18dp"
+            android:paddingEnd="18dp"
+            android:letterSpacing="0"
+            android:textAllCaps="false"
+            android:textSize="15sp"
+            android:text="Filme"
+            android:nextFocusLeft="@id/flimmer_tv_tab_series"
+            android:nextFocusRight="@id/flimmer_tv_tab_anime"
+            android:nextFocusUp="@id/flimmer_tv_tab_movies"
+            android:nextFocusDown="@id/home_preview_info_btt" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/flimmer_tv_tab_anime"
+            style="@style/RegularButtonTV"
+            android:layout_width="wrap_content"
+            android:layout_marginStart="4dp"
+            android:layout_marginEnd="4dp"
+            android:paddingStart="18dp"
+            android:paddingEnd="18dp"
+            android:letterSpacing="0"
+            android:textAllCaps="false"
+            android:textSize="15sp"
+            android:text="Anime"
+            android:nextFocusLeft="@id/flimmer_tv_tab_movies"
+            android:nextFocusRight="@id/flimmer_tv_tab_more"
+            android:nextFocusUp="@id/flimmer_tv_tab_anime"
+            android:nextFocusDown="@id/home_preview_info_btt" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/flimmer_tv_tab_more"
+            style="@style/RegularButtonTV"
+            android:layout_width="wrap_content"
+            android:layout_marginStart="4dp"
+            android:layout_marginEnd="4dp"
+            android:paddingStart="18dp"
+            android:paddingEnd="18dp"
+            android:letterSpacing="0"
+            android:textAllCaps="false"
+            android:textSize="15sp"
+            android:text="Weitere Quellen"
+            android:nextFocusLeft="@id/flimmer_tv_tab_anime"
+            android:nextFocusRight="@id/home_preview_search_button"
+            android:nextFocusUp="@id/flimmer_tv_tab_more"
+            android:nextFocusDown="@id/home_preview_info_btt" />
+    </LinearLayout>
+
     <LinearLayout
         android:id="@+id/home_api_holder"
         android:layout_width="wrap_content"

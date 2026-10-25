@@ -168,6 +168,40 @@
                         style="@style/ChipParent"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content" />
+
+                    <!-- Flimmer: Hinweis, sobald die Karte ausgewählt ist -->
+                    <LinearLayout
+                        android:id="@+id/flimmer_tv_hint"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:orientation="horizontal"
+                        android:visibility="invisible">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="40dp"
+                            android:background="@drawable/flimmer_tv_hint_bg"
+                            android:drawablePadding="6dp"
+                            android:gravity="center"
+                            android:paddingStart="16dp"
+                            android:paddingEnd="20dp"
+                            android:text="Weitere Infos"
+                            android:textColor="#FF141414"
+                            android:textSize="15sp"
+                            android:textStyle="bold"
+                            app:drawableStartCompat="@drawable/ic_outline_info_24"
+                            app:drawableTint="#FF141414" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="40dp"
+                            android:layout_marginStart="12dp"
+                            android:gravity="center_vertical"
+                            android:text="◀ ▶ blättern"
+                            android:textColor="@color/gray_200"
+                            android:textSize="13sp" />
+                    </LinearLayout>
                 </LinearLayout>
 
             </androidx.cardview.widget.CardView>
