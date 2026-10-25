@@ -700,6 +700,15 @@ open class ResultFragmentPhone : BaseFragment<FragmentResultSwipeBinding>(
             }
         }
 
+        // Flimmer: ähnliche Titel unten auf der Seite
+        resultBinding?.flimmerSimilarList?.apply {
+            spanCount = 3
+            setRecycledViewPool(SearchAdapter.sharedPool)
+            adapter = SearchAdapter(this) { callback ->
+                SearchHelper.handleSearchClickCallback(callback)
+            }
+        }
+
         recommendationBinding?.apply {
             resultRecommendationsList.apply {
                 spanCount = 3
@@ -1450,6 +1459,15 @@ open class ResultFragmentPhone : BaseFragment<FragmentResultSwipeBinding>(
     private fun setRecommendations(rec: List<SearchResponse>?, validApiName: String?) {
         val isInvalid = rec.isNullOrEmpty()
         val matchAgainst = validApiName ?: rec?.firstOrNull()?.apiName
+
+        resultBinding?.apply {
+            val similar = rec?.filter { it.apiName == matchAgainst }?.take(12).orEmpty()
+            flimmerSimilarTitle.isGone = similar.isEmpty()
+            flimmerSimilarList.isGone = similar.isEmpty()
+            flimmerSimilarList.post {
+                (flimmerSimilarList.adapter as? SearchAdapter)?.submitList(similar)
+            }
+        }
 
         recommendationBinding?.apply {
             root.isGone = isInvalid

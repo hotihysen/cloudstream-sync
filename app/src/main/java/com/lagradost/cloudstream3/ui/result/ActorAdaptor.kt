@@ -95,13 +95,25 @@ class ActorAdaptor(
                     }
                 }
 
+                // Flimmer: Antippen öffnet die Infoseite der Person (Biografie, Filme, Serien)
                 itemView.setOnClickListener {
-                    inverted[item] = !isInverted
-                    this.onUpdateContent(holder, getItem(position), position)
+                    if (com.lagradost.cloudstream3.flimmer.FlimmerKatalog.isConfigured) {
+                        val shown = if (isInverted && item.voiceActor != null) item.voiceActor else item.actor
+                        com.lagradost.cloudstream3.flimmer.FlimmerPerson.show(
+                            com.lagradost.cloudstream3.CommonActivity.activity, shown.name, shown.image
+                        )
+                    } else {
+                        inverted[item] = !isInverted
+                        this.onUpdateContent(holder, getItem(position), position)
+                    }
                 }
 
                 itemView.setOnLongClickListener {
-                    if (isLayout(PHONE)) {
+                    if (item.voiceActor != null) {
+                        // Sprecher/Figur umschalten
+                        inverted[item] = !isInverted
+                        this.onUpdateContent(holder, getItem(position), position)
+                    } else if (isLayout(PHONE)) {
                         Intent(Intent.ACTION_WEB_SEARCH).apply {
                             putExtra(SearchManager.QUERY, item.actor.name)
                         }.also { intent ->

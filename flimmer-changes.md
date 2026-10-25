@@ -1,5 +1,5 @@
-Flimmer 17.0 Beta 3
+Flimmer 17.0 Beta 4
 
-- Knöpfe «Abspielen» und «Meine Liste» passen in eine Zeile
-- Statusleiste oben wird beim Scrollen abgedeckt
-- Detailseiten aus dem Katalog: Hintergrundbild lädt schneller (kleinere Bildgrösse)
+- Personen antippen (Besetzung auf der Detailseite): Infoseite mit Bild, Lebensdaten, Biografie sowie Filmen und Serien; Titel direkt antippbar
+- Detailseite: «Ähnliche Titel» unten auf der Seite (bei neuen Titeln ohne Empfehlungen werden ähnliche Titel von TMDB verwendet)
+- Sprecher/Figur bei Anime: jetzt per langem Druck umschalten

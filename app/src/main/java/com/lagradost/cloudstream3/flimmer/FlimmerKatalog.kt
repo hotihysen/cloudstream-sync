@@ -402,6 +402,96 @@ class FlimmerKatalog(private val mode: Mode = Mode.ALL) : MainAPI() {
     private fun img(path: String?, size: String = "w500") = path?.let { "$IMG/$size$it" }
     private fun yearOf(date: String?) = date?.take(4)?.toIntOrNull()
 
+    // ------------------------------------------------------------------ Personen
+
+    @Serializable
+    data class TmdbPersonHit(
+        @JsonProperty("id") @SerialName("id") val id: Int = 0,
+        @JsonProperty("name") @SerialName("name") val name: String? = null,
+        @JsonProperty("known_for_department") @SerialName("known_for_department") val department: String? = null,
+    )
+
+    @Serializable
+    data class TmdbPersonSearch(@JsonProperty("results") @SerialName("results") val results: List<TmdbPersonHit> = emptyList())
+
+    @Serializable
+    data class TmdbCombinedCredits(@JsonProperty("cast") @SerialName("cast") val cast: List<TmdbCreditItem> = emptyList())
+
+    @Serializable
+    data class TmdbCreditItem(
+        @JsonProperty("id") @SerialName("id") val id: Int = 0,
+        @JsonProperty("media_type") @SerialName("media_type") val mediaType: String? = null,
+        @JsonProperty("title") @SerialName("title") val title: String? = null,
+        @JsonProperty("name") @SerialName("name") val name: String? = null,
+        @JsonProperty("poster_path") @SerialName("poster_path") val posterPath: String? = null,
+        @JsonProperty("release_date") @SerialName("release_date") val releaseDate: String? = null,
+        @JsonProperty("first_air_date") @SerialName("first_air_date") val firstAirDate: String? = null,
+        @JsonProperty("vote_average") @SerialName("vote_average") val voteAverage: Double? = null,
+        @JsonProperty("vote_count") @SerialName("vote_count") val voteCount: Int? = null,
+        @JsonProperty("popularity") @SerialName("popularity") val popularity: Double? = null,
+        @JsonProperty("character") @SerialName("character") val character: String? = null,
+        @JsonProperty("episode_count") @SerialName("episode_count") val episodeCount: Int? = null,
+    )
+
+    @Serializable
+    data class TmdbPerson(
+        @JsonProperty("id") @SerialName("id") val id: Int = 0,
+        @JsonProperty("name") @SerialName("name") val name: String? = null,
+        @JsonProperty("biography") @SerialName("biography") val biography: String? = null,
+        @JsonProperty("birthday") @SerialName("birthday") val birthday: String? = null,
+        @JsonProperty("deathday") @SerialName("deathday") val deathday: String? = null,
+        @JsonProperty("place_of_birth") @SerialName("place_of_birth") val placeOfBirth: String? = null,
+        @JsonProperty("profile_path") @SerialName("profile_path") val profilePath: String? = null,
+        @JsonProperty("known_for_department") @SerialName("known_for_department") val department: String? = null,
+        @JsonProperty("combined_credits") @SerialName("combined_credits") val credits: TmdbCombinedCredits? = null,
+    )
+
+    data class PersonInfo(
+        val name: String,
+        val image: String?,
+        val meta: String,
+        val biography: String?,
+        val titles: List<SearchResponse>,
+    )
+
+    /** Person per Name suchen und mit Biografie und Filmografie laden (Deutsch, Biografie notfalls Englisch). */
+    suspend fun loadPerson(name: String): PersonInfo? {
+        val q = java.net.URLEncoder.encode(name, "UTF-8")
+        val hit = parseJson<TmdbPersonSearch>(tmdb("search/person", "query=$q")).results.firstOrNull() ?: return null
+        val p = parseJson<TmdbPerson>(tmdb("person/${hit.id}", "append_to_response=combined_credits"))
+        val bio = p.biography?.takeIf { it.isNotBlank() } ?: try {
+            val enKey = if (apiKey.length > 40) "" else "&api_key=$apiKey"
+            val headers = if (apiKey.length > 40) mapOf("Authorization" to "Bearer $apiKey") else emptyMap()
+            val res = app.get("$API/person/${hit.id}?language=en-US$enKey", headers = headers)
+            if (res.isSuccessful) parseJson<TmdbPerson>(res.text).biography else null
+        } catch (t: Throwable) {
+            null
+        }
+        fun date(s: String?) = s?.split("-")?.takeIf { it.size == 3 }?.let { "${it[2]}.${it[1]}.${it[0]}" }
+        val meta = listOfNotNull(
+            when (p.department) { "Acting" -> "Schauspiel"; "Directing" -> "Regie"; "Writing" -> "Drehbuch"; else -> p.department },
+            date(p.birthday)?.let { "geboren $it" + (p.placeOfBirth?.let { place -> " in $place" } ?: "") },
+            date(p.deathday)?.let { "gestorben $it" },
+        ).joinToString(" · ")
+        val titles = p.credits?.cast.orEmpty()
+            .filter { it.posterPath != null && (it.mediaType == "movie" || it.mediaType == "tv") }
+            // Talkshows und Kurzauftritte in Serien nach hinten
+            .sortedByDescending { (it.voteCount ?: 0) * (if (it.mediaType == "tv" && (it.episodeCount ?: 0) <= 1) 0.1 else 1.0) }
+            .distinctBy { "${it.mediaType}/${it.id}" }
+            .take(60)
+            .mapNotNull { c ->
+                TmdbItem(
+                    id = c.id, mediaType = c.mediaType, title = c.title, name = c.name, posterPath = c.posterPath,
+                    releaseDate = c.releaseDate, firstAirDate = c.firstAirDate, voteAverage = c.voteAverage,
+                ).toSearch()
+            }
+        return PersonInfo(p.name ?: name, img(p.profilePath, "w300"), meta, bio, titles)
+    }
+
+    /** Ähnliche Titel, wenn TMDB keine Empfehlungen hat */
+    @Serializable
+    data class TmdbSimilar(@JsonProperty("results") @SerialName("results") val results: List<TmdbItem> = emptyList())
+
     private fun TmdbItem.toSearch(forcedType: String? = null): SearchResponse? {
         val kind = forcedType ?: mediaType ?: return null
         val title = (title ?: name)?.takeIf { it.isNotBlank() } ?: return null
@@ -486,7 +576,12 @@ class FlimmerKatalog(private val mode: Mode = Mode.ALL) : MainAPI() {
             ?.sortedByDescending { it.type == "Trailer" }
             ?.firstOrNull { it.site == "YouTube" && it.key.isNotBlank() }
             ?.let { "https://www.youtube.com/watch?v=${it.key}" }
-        val recs = d.recommendations?.results?.mapNotNull { it.toSearch(kind) }
+        val recs = d.recommendations?.results?.mapNotNull { it.toSearch(kind) }?.takeIf { it.isNotEmpty() }
+            ?: try {
+                parseJson<TmdbSimilar>(tmdb("$kind/$id/similar")).results.mapNotNull { it.toSearch(kind) }
+            } catch (t: Throwable) {
+                null
+            }
         val cast = d.credits?.cast?.take(20)?.map { Actor(it.name, img(it.profilePath, "w185")) to it.character }
         val alt = altTitles(d, title)
         // Textfreies Poster (ohne Sprache) für die Hero-Karte, sonst das deutsche
