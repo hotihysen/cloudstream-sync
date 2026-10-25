@@ -627,13 +627,20 @@ class HomeParentItemAdapterPreview(
                 // Flimmer: Hero als abgerundete Karte
                 homePreviewViewpagerText.clipToOutline = true
                 homePreviewViewpagerText.outlineProvider = android.view.ViewOutlineProvider.BACKGROUND
+                // Höhe an den Bildschirm anpassen, damit Knöpfe und der Anfang der nächsten Reihe sichtbar bleiben
+                val dm = root.resources.displayMetrics
+                val screenDp = dm.heightPixels / dm.density
+                val cardDp = (screenDp - 330f).coerceIn(360f, 540f)
+                homePreviewViewpagerText.layoutParams = homePreviewViewpagerText.layoutParams.apply {
+                    height = (cardDp * dm.density).toInt()
+                }
 
                 // Flimmer: Reiter Alles / Serien / Filme / Anime
                 flimmerChipScroll.isVisible = FlimmerKatalog.isConfigured
                 flimmerChipTargets().forEach { (chip, name) ->
                     chip.setOnClickListener {
                         if (viewModel.apiName.value != name) {
-                            viewModel.loadAndCancel(name, forceReload = false, fromUI = true)
+                            viewModel.loadAndCancel(name, forceReload = true, fromUI = true)
                         }
                         syncFlimmerChips(name)
                     }
@@ -677,7 +684,7 @@ class HomeParentItemAdapterPreview(
         }
 
         private fun updatePreview(preview: Resource<Pair<Boolean, List<LoadResponse>>>) {
-            if (preview is Resource.Success && binding !is FragmentHomeHeadBinding) {
+            if (preview is Resource.Success) {
                 homeNonePadding.apply {
                     val params = layoutParams
                     params.height = 0

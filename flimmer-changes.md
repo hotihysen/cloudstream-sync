@@ -1,7 +1,6 @@
-Flimmer 17.0 Beta 1 (neues Layout, Teil Handy)
+Flimmer 17.0 Beta 2
 
-- Startseite: Hero als abgerundete Karte im Hochformat mit Titel-Logo, Genres, «Abspielen» und «Meine Liste»
-- Reiter oben: Alles, Serien, Filme, Anime (eigene Startseiten mit passenden Reihen)
-- Neue Bereiche «Flimmer Serien» (u. a. Apple TV+, K-Dramen, Krimi) und «Flimmer Filme» (u. a. Demnächst, Romantik)
-- Schwebende, abgerundete Navigationsleiste mit Beschriftung
-- Suche und Profil als eigene Kopfzeile über der Karte
+- Reiter Alles, Serien, Filme, Anime wechseln jetzt wirklich den Inhalt
+- Hero-Karte passt sich der Bildschirmhöhe an, Knöpfe bleiben sichtbar
+- Leerraum über der Suche entfernt
+- Navigationsleiste kompakter, Symbole mittig
