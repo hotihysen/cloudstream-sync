@@ -748,7 +748,7 @@ class FlimmerKatalog(private val mode: Mode = Mode.ALL) : MainAPI() {
     }
 
     /** Bester Treffer einer Erweiterung für den Titel, oder null. */
-    private suspend fun findMatch(api: MainAPI, d: LinkData): Match? {
+    private suspend fun findMatch(api: MainAPI, d: LinkData, seen: MutableList<String>? = null): Match? {
         val allTitles = (listOf(d.title) + listOfNotNull(d.originalTitle) + d.altTitles).distinct()
         val wanted = allTitles.map { loose(it) }.filter { it.length >= 2 }.toSet()
         val season = d.season
@@ -765,7 +765,11 @@ class FlimmerKatalog(private val mode: Mode = Mode.ALL) : MainAPI() {
             } catch (t: Throwable) {
                 emptyList()
             }
-            val fitting = results.filter { typeFits(it, d.isTv) }
+            seen?.let { list -> results.take(4).forEach { r -> if (list.size < 6 && r.name !in list) list += r.name } }
+            // Manche Seiten kennzeichnen Serien als Film (oder umgekehrt): bei eindeutigem Titel trotzdem nehmen
+            val typed = results.filter { typeFits(it, d.isTv) }
+            val fitting = if (typed.any { loose(it.name) in wanted }) typed
+            else typed + results.filter { it !in typed && loose(it.name) in wanted }
             fun yearOk(r: SearchResponse): Boolean {
                 val y = searchYear(r) ?: return true
                 val want = d.year ?: return true
@@ -873,9 +877,11 @@ class FlimmerKatalog(private val mode: Mode = Mode.ALL) : MainAPI() {
                     report[api.name] = "läuft …"
                     val finished = withTimeoutOrNull(PROVIDER_TIMEOUT_MS) {
                         try {
-                            val match = findMatch(api, d)
+                            val seen = mutableListOf<String>()
+                            val match = findMatch(api, d, seen)
                             if (match == null) {
-                                report[api.name] = "kein passender Titel"
+                                report[api.name] = if (seen.isEmpty()) "Titel nicht im Angebot (Suche leer)"
+                                else "kein passender Titel, gefunden: " + seen.joinToString(" | ")
                                 return@withTimeoutOrNull true
                             }
                             val load = api.load(match.result.url)
