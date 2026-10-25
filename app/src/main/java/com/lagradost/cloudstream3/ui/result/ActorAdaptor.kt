@@ -98,7 +98,7 @@ class ActorAdaptor(
                 // Flimmer: Antippen öffnet die Infoseite der Person (Biografie, Filme, Serien)
                 itemView.setOnClickListener {
                     if (com.lagradost.cloudstream3.flimmer.FlimmerKatalog.isConfigured) {
-                        val shown = if (isInverted && item.voiceActor != null) item.voiceActor else item.actor
+                        val shown = (if (isInverted) item.voiceActor else null) ?: item.actor
                         com.lagradost.cloudstream3.flimmer.FlimmerPerson.show(
                             com.lagradost.cloudstream3.CommonActivity.activity, shown.name, shown.image
                         )
