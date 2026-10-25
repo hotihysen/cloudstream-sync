@@ -478,6 +478,18 @@ class FlimmerKatalog : MainAPI() {
         return out.take(8)
     }
 
+    private fun searchYear(r: SearchResponse): Int? = when (r) {
+        is MovieSearchResponse -> r.year
+        is TvSeriesSearchResponse -> r.year
+        else -> null
+    }
+
+    private fun typeFits(r: SearchResponse, isTv: Boolean): Boolean {
+        val t = r.type ?: return true
+        return if (isTv) t in setOf(TvType.TvSeries, TvType.Anime, TvType.Cartoon, TvType.AsianDrama, TvType.Documentary, TvType.OVA)
+        else t in setOf(TvType.Movie, TvType.AnimeMovie, TvType.Cartoon, TvType.Documentary)
+    }
+
     private data class Match(val result: SearchResponse, val seasonEntry: Boolean)
 
     /** Bester Treffer einer Erweiterung für den Titel, oder null. */
