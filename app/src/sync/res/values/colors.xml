@@ -4,4 +4,17 @@
     <color name="colorPrimary">#FF7A4D</color>
     <color name="colorPrimaryDark">#C2410C</color>
     <color name="colorAccent">#FF7A4D</color>
+
+    <!-- Ruhiges, dunkles Farbschema mit leichtem Blauton (statt reinem Grau) -->
+    <color name="primaryBlackBackground">#0E0D15</color>
+    <color name="amoledModeLight">#0E0D15</color>
+    <color name="primaryGrayBackground">#221F2E</color>
+    <color name="iconGrayBackground">#191724</color>
+    <color name="boxItemBackground">#16141F</color>
+    <color name="colorSearch">#221F2E</color>
+    <color name="textColor">#F1EFF7</color>
+    <color name="grayTextColor">#A29FB2</color>
+    <color name="typeColorBg">#3B2C6E</color>
+    <color name="dubColorBg">#FF7A4D</color>
+    <color name="dubColorText">#3A1206</color>
 </resources>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Flimmer: weichere Ecken bei Postern und Karten -->
+    <dimen name="rounded_image_radius">14dp</dimen>
+    <dimen name="card_corner_radius">8dp</dimen>
+</resources>

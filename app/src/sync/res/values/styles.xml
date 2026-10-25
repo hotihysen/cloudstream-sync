@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Flimmer: Standard-Farbschema (AmoledLight) mit tiefem Blau-Schwarz statt reinem Schwarz -->
+    <style name="AmoledModeLight" parent="AmoledMode">
+        <item name="primaryBlackBackground">@color/primaryBlackBackground</item>
+        <item name="primaryGrayBackground">@color/primaryGrayBackground</item>
+        <item name="iconGrayBackground">@color/iconGrayBackground</item>
+        <item name="boxItemBackground">@color/boxItemBackground</item>
+    </style>
+</resources>

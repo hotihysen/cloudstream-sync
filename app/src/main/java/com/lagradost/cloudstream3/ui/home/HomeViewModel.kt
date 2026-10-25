@@ -380,9 +380,13 @@ class HomeViewModel : ViewModel() {
                                 .distinctBy { it.url }.toList()
 
                         if (currentList.isNotEmpty()) {
-                            val randomItems =
-                                context?.filterSearchResultByFilmQuality(currentList.shuffled())
-                                    ?: currentList.shuffled()
+                            // Flimmer Katalog: Hero zeigt die aktuellen Trends in Reihenfolge
+                            val katalogTrends = if (api.name == com.lagradost.cloudstream3.flimmer.FlimmerKatalog.NAME) {
+                                items.firstOrNull { it.list.isNotEmpty() }?.list?.distinctBy { it.url }
+                            } else null
+                            val randomItems = katalogTrends
+                                ?: context?.filterSearchResultByFilmQuality(currentList.shuffled())
+                                ?: currentList.shuffled()
 
                             updatePreviewResponses(
                                 previewResponses,
