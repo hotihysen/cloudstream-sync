@@ -1,4 +1,7 @@
-Flimmer 17.0
+Flimmer 17.0.1
+
+- Fernseher: Absturz der Startseite («Missing required view with ID: flimmer_status_scrim») behoben
+
 
 Neues Layout für Handy und Fernseher (eine APK für beide).
 

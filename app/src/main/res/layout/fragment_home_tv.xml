@@ -152,6 +152,13 @@
             android:layout_gravity="start"
             android:layout_margin="10dp" />
 
+    <!-- Flimmer: nur auf dem Handy genutzt, muss aber für die gemeinsame Bindung vorhanden sein -->
+    <View
+        android:id="@+id/flimmer_status_scrim"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:visibility="gone" />
+
     <!-- Flimmer: Reiter für den Fernseher -->
     <LinearLayout
         android:id="@+id/flimmer_tv_tabs"

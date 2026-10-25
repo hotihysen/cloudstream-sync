@@ -763,7 +763,7 @@ class HomeFragment : BaseFragment<FragmentHomeBinding>(
             homeApiFab.isVisible = isLayout(PHONE) && !com.lagradost.cloudstream3.flimmer.FlimmerKatalog.isConfigured
             setupFlimmerTvTabs(root)
             // Flimmer: Statusleiste abdecken
-            root.findViewById<View>(R.id.flimmer_status_scrim)?.let {
+            if (isLayout(PHONE)) root.findViewById<View>(R.id.flimmer_status_scrim)?.let {
                 com.lagradost.cloudstream3.utils.UIHelper.fixPaddingStatusbarView(it)
             }
 
