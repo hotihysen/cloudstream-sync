@@ -112,6 +112,16 @@
                 android:id="@+id/flimmer_chip_anime"
                 style="@style/FlimmerChip"
                 android:text="Anime" />
+
+            <!-- Weitere Startseiten (einzelne Erweiterungen) -->
+            <com.google.android.material.chip.Chip
+                android:id="@+id/flimmer_chip_more"
+                style="@style/FlimmerChip"
+                android:checkable="false"
+                android:text="Weitere Quellen"
+                app:chipIcon="@drawable/ic_baseline_keyboard_arrow_down_24"
+                app:chipIconTint="@color/white"
+                app:chipIconVisible="true" />
         </com.google.android.material.chip.ChipGroup>
     </HorizontalScrollView>
 

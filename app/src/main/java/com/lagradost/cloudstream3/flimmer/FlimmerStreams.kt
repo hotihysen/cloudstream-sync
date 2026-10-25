@@ -61,9 +61,15 @@ object FlimmerStreams {
 
     // ------------------------------------------------------------------ Sprache
 
-    private val germanMarkers = Regex("""(?i)\b(german|deutsch|ger[ .-]?dub|gerdub|dub[ .-]?ger|\bde\b|🇩🇪)""")
-    private val subMarkers = Regex("""(?i)\b(omu|ger[ .-]?sub|gersub|sub(bed)?|vostfr|engsub)\b""")
+    private val germanMarkers = Regex("""(?i)(\bgerman\b|\bdeutsch|\bger[ ._-]?dub\b|\bgerdub\b|\bdub[ ._-]?ger\b|\[de\]|\(de\)|🇩🇪)""")
+    private val subMarkers = Regex("""(?i)(\bomu\b|\bger[ ._-]?sub\b|\bgersub\b|\beng[ ._-]?sub\b|\bsub(bed|s)?\b|untertitel|\bvostfr\b|\bmit ut\b)""")
+    private val otherLanguageMarkers = Regex("""(?i)(\benglisch|\benglish\b|\beng\b|\bjapanisch|\bjapanese\b|\bjap\b|\boriginal\b|\bfranz|\bfrench\b|\bspanisch|\bitalienisch|🇬🇧|🇺🇸|🇯🇵)""")
 
+    /**
+     * Sprachbewertung eines Links.
+     * Ausdrückliche Angaben im Namen («[Deutsch]», «[Englisch]», «Ger-Sub» …) haben Vorrang;
+     * nur wenn ein Link gar keine Sprache nennt, zählt die Sprache der Erweiterung.
+     */
     private fun languageScore(link: ExtractorLink, origin: Origin?): Int {
         val pref = language
         if (pref == LANG_ANY) return 0
@@ -71,17 +77,21 @@ object FlimmerStreams {
         val germanProvider = origin?.providerLang?.lowercase()?.startsWith("de") == true
         val markedGerman = germanMarkers.containsMatchIn(text)
         val markedSub = subMarkers.containsMatchIn(text)
+        val markedOther = otherLanguageMarkers.containsMatchIn(text)
+        val unmarked = !markedGerman && !markedSub && !markedOther
         return when (pref) {
             LANG_DE -> when {
-                markedGerman && !markedSub -> 3
-                germanProvider && !markedSub -> 3
-                germanProvider && markedSub -> 1 // deutsche Untertitel
+                markedGerman && !markedSub -> 3          // deutsche Tonspur
+                markedSub && (markedGerman || germanProvider) && !markedOther -> 1 // deutsche Untertitel
+                markedOther -> 0                         // andere Sprache, auch bei deutscher Erweiterung
+                unmarked && germanProvider -> 2          // vermutlich deutsch
                 else -> 0
             }
             LANG_ORIGINAL -> when {
-                markedSub -> 2
-                germanProvider || markedGerman -> 0
-                else -> 1
+                markedOther || markedSub -> 2            // Originalton, ggf. mit Untertiteln
+                markedGerman -> 0
+                unmarked && !germanProvider -> 1
+                else -> 0
             }
             else -> 0
         }
@@ -150,6 +160,22 @@ object FlimmerStreams {
         val q = link.quality
         val goodQuality = q >= Qualities.P1080.value && q != Qualities.Unknown.value
         return goodQuality && bonus(link) >= 3
+    }
+
+    // ------------------------------------------------------------------ Früh starten, weiterladen
+
+    /**
+     * Wird vom Player gesetzt: startet die Wiedergabe mit dem bisher besten Link,
+     * während die übrigen Erweiterungen im Hintergrund weiter Quellen liefern.
+     */
+    @Volatile var startNowListener: (() -> Unit)? = null
+
+    fun requestStartNow() {
+        try {
+            startNowListener?.invoke()
+        } catch (t: Throwable) {
+            Log.w(TAG, "startNow", t)
+        }
     }
 
     // ------------------------------------------------------------------ Qualität ermitteln

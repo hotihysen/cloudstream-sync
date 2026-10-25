@@ -868,18 +868,22 @@ class FlimmerKatalog(private val mode: Mode = Mode.ALL) : MainAPI() {
                 }
             }
 
-            // Nicht ewig auf langsame Erweiterungen warten: nach einem sehr guten Treffer kurz,
-            // sonst nach dem ersten Treffer noch einige Sekunden auf bessere Quellen warten
+            // Wiedergabe früh starten (nach einem sehr guten Treffer kurz, sonst einige Sekunden
+            // nach dem ersten Treffer), die übrigen Erweiterungen laden aber im Hintergrund weiter
+            // und erscheinen in der Quellenauswahl.
+            var started = false
             while (true) {
                 delay(250)
                 if (jobs.all { it.isCompleted }) break
+                if (started) continue
                 val now = System.currentTimeMillis()
                 val excellent = excellentAt.get()
                 val first = firstLinkAt.get()
-                if (excellent > 0 && now - excellent >= EXCELLENT_GRACE_MS) break
-                if (first > 0 && now - first >= SETTLE_MS) break
+                if ((excellent > 0 && now - excellent >= EXCELLENT_GRACE_MS) || (first > 0 && now - first >= SETTLE_MS)) {
+                    started = true
+                    FlimmerStreams.requestStartNow()
+                }
             }
-            jobs.forEach { it.cancel() }
             incoming.close()
             withTimeoutOrNull(5_000L) { processor.join() }
             processor.cancel()

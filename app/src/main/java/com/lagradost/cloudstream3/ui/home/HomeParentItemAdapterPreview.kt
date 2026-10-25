@@ -37,6 +37,7 @@ import com.lagradost.cloudstream3.mvvm.observe
 import com.lagradost.cloudstream3.ui.ViewHolderState
 import com.lagradost.cloudstream3.ui.WatchType
 import com.lagradost.cloudstream3.flimmer.FlimmerKatalog
+import com.lagradost.cloudstream3.ui.home.HomeFragment.Companion.selectHomepage
 import com.lagradost.cloudstream3.ui.account.AccountHelper.showAccountEditDialog
 import com.lagradost.cloudstream3.ui.account.AccountHelper.showAccountSelectLinear
 import com.lagradost.cloudstream3.ui.account.AccountViewModel
@@ -637,6 +638,11 @@ class HomeParentItemAdapterPreview(
 
                 // Flimmer: Reiter Alles / Serien / Filme / Anime
                 flimmerChipScroll.isVisible = FlimmerKatalog.isConfigured
+                flimmerChipMore.setOnClickListener { view ->
+                    view.context.selectHomepage(viewModel.apiName.value) { api ->
+                        viewModel.loadAndCancel(api, forceReload = true, fromUI = true)
+                    }
+                }
                 flimmerChipTargets().forEach { (chip, name) ->
                     chip.setOnClickListener {
                         if (viewModel.apiName.value != name) {
@@ -673,6 +679,9 @@ class HomeParentItemAdapterPreview(
         private fun syncFlimmerChips(apiName: String?) {
             val targets = flimmerChipTargets()
             targets.forEach { (chip, name) -> chip.isChecked = name == apiName }
+            // Eigene Erweiterung als Startseite: Name auf dem Knopf «Weitere Quellen» anzeigen
+            (binding as? FragmentHomeHeadBinding)?.flimmerChipMore?.text =
+                if (apiName != null && targets.none { it.second == apiName }) apiName else "Weitere Quellen"
         }
 
         private fun TextView.setFlimmerBookmark(type: WatchType) {

@@ -699,7 +699,8 @@ class HomeFragment : BaseFragment<FragmentHomeBinding>(
             homeMasterRecycler.setRecycledViewPool(ParentItemAdapter.sharedPool)
             homeMasterRecycler.adapter = homeMasterAdapter
 
-            homeApiFab.isVisible = isLayout(PHONE)
+            // Flimmer: Auswahl der Startseite erfolgt über die Reiter oben
+            homeApiFab.isVisible = isLayout(PHONE) && !com.lagradost.cloudstream3.flimmer.FlimmerKatalog.isConfigured
             // Flimmer: Statusleiste abdecken
             root.findViewById<View>(R.id.flimmer_status_scrim)?.let {
                 com.lagradost.cloudstream3.utils.UIHelper.fixPaddingStatusbarView(it)

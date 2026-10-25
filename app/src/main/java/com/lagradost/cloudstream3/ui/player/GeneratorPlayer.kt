@@ -1716,6 +1716,7 @@ class GeneratorPlayer : FullScreenPlayer() {
     }
 
     override fun onDestroy() {
+        com.lagradost.cloudstream3.flimmer.FlimmerStreams.startNowListener = null
         ResultFragment.updateUI()
         currentVerifyLink?.cancel()
         super.onDestroy()
@@ -2307,6 +2308,16 @@ class GeneratorPlayer : FullScreenPlayer() {
             // Mark as "success" early
             viewModel.modifyState {
                 copy(loading = Resource.Success(Unit))
+            }
+        }
+
+        // Flimmer: Katalog meldet «gut genug, jetzt starten» (wie «Laden überspringen»),
+        // weitere Quellen werden danach trotzdem noch in die Liste aufgenommen
+        com.lagradost.cloudstream3.flimmer.FlimmerStreams.startNowListener = {
+            if (!isPlayerActive.get() && viewModel.state.links.isNotEmpty()) {
+                viewModel.modifyState {
+                    if (loading is Resource.Loading) copy(loading = Resource.Success(Unit)) else this
+                }
             }
         }
 
