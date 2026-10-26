@@ -232,7 +232,7 @@ private fun TopBar(nav: Nav) {
     val update by Updates.available.collectAsState()
     Row(
         Modifier.fillMaxWidth().height(68.dp)
-            .background(Brush.verticalGradient(listOf(Color(0xE6141414), Color.Transparent)))
+            .background(Brush.verticalGradient(0f to Color(0xFF141414), 0.6f to Color(0xE6141414), 1f to Color(0x00141414)))
             .padding(horizontal = 40.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
