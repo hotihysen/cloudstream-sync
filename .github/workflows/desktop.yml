@@ -1,0 +1,138 @@
+name: Windows bauen
+# Flimmer für Windows: portabler Ordner mit Flimmer.exe und mpv, als ZIP für Intel/AMD (x64) und ARM64.
+# Veröffentlicht als Vorabversion mit dem festen Tag «windows»; die Android-Releases bleiben «latest».
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'desktopApp/**'
+      - 'library/**'
+      - 'desktop-version.txt'
+      - 'app/src/main/java/com/lagradost/cloudstream3/flimmer/FlimmerKatalog.kt'
+      - '.github/workflows/desktop.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: desktop
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            os: windows-latest
+            mpv: '^mpv-x86_64-[0-9]{8}-git-[0-9a-f]+\.7z$'
+          - arch: ARM64
+            os: windows-11-arm
+            mpv: '^mpv-aarch64-[0-9]{8}-git-[0-9a-f]+\.7z$'
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Android SDK (nur für die Gradle-Konfiguration)
+        if: matrix.arch == 'ARM64'
+        uses: android-actions/setup-android@v3
+        with:
+          packages: ''
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: Flimmer bauen
+        shell: bash
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          FLIMMER_TRAKT_ID: ${{ secrets.FLIMMER }}
+        run: ./gradlew :desktopApp:createDistributable --no-daemon --console=plain 2>&1 | tee build.log; exit ${PIPESTATUS[0]}
+
+      - name: Kompilierfehler anzeigen
+        if: failure()
+        shell: bash
+        run: grep -E "^e: |error:|FAILURE|What went wrong" -A3 build.log | head -80 | while IFS= read -r l; do echo "::error::$l"; done
+
+      - name: Selbsttest (Erweiterungen laden, Quellen suchen)
+        if: matrix.arch == 'x64'
+        continue-on-error: true
+        shell: bash
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          FLIMMER_TRAKT_ID: ${{ secrets.FLIMMER }}
+        run: |
+          timeout 600 ./gradlew :desktopApp:flimmerSelfTest --no-daemon --console=plain 2>&1 | tee selftest.log
+          grep -E "OK  |FEHL|Erweiterungen geladen|^-> |: [0-9]+ Links|Zeitüberschreitung|nicht im Angebot|kein passender|Fehler" selftest.log | head -120 | while IFS= read -r l; do echo "::notice::$l"; done
+
+      - name: mpv holen
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          url=$(gh api repos/shinchiro/mpv-winbuild-cmake/releases/latest --jq '.assets[] | select(.name | test("${{ matrix.mpv }}")) | .browser_download_url' | head -1)
+          echo "mpv: $url"
+          curl -sSL -o mpv.7z "$url"
+          dist=desktopApp/build/compose/binaries/main/app/Flimmer
+          mkdir -p "$dist/mpv"
+          7z x -y -o"$dist/mpv" mpv.7z > /dev/null
+          ls "$dist" "$dist/mpv"
+          test -f "$dist/mpv/mpv.exe"
+
+      - name: ZIP erstellen
+        shell: pwsh
+        run: |
+          $dist = "desktopApp/build/compose/binaries/main/app/Flimmer"
+          Set-Content -Path "$dist/LIESMICH.txt" -Encoding utf8 -Value @"
+          Flimmer für Windows
+          
+          1. Diesen Ordner irgendwohin entpacken (z.B. Dokumente oder einen USB-Stick).
+          2. Flimmer.exe starten. Erscheint «Der Computer wurde durch Windows geschützt»:
+             «Weitere Informationen» und «Trotzdem ausführen» wählen.
+          3. Deine Daten (Einstellungen, Erweiterungen) liegen im Ordner «Flimmer-Daten» daneben.
+          
+          Videoplayer: mpv (Ordner «mpv»). Tasten: Leertaste Pause, F Vollbild, Pfeile spulen, Q schliessen.
+          "@
+          Compress-Archive -Path $dist -DestinationPath "Flimmer-Windows-${{ matrix.arch }}.zip" -CompressionLevel Optimal
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Flimmer-Windows-${{ matrix.arch }}
+          path: Flimmer-Windows-${{ matrix.arch }}.zip
+          retention-days: 7
+
+  release:
+    needs: build
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: Release «windows» erneuern
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -la out
+          ls out/*.zip >/dev/null 2>&1 || { echo "::error::Kein ZIP gebaut"; exit 1; }
+          version=$(cat desktop-version.txt)
+          gh release delete windows -y --cleanup-tag || true
+          sleep 3
+          gh release create windows out/*.zip --prerelease --latest=false \
+            --title "Flimmer für Windows ${version} · Build ${{ github.run_number }}" \
+            --notes "Flimmer für Windows ${version} · Build ${{ github.run_number }}
+
+          - Flimmer-Windows-x64.zip: normale PCs und Laptops mit Intel- oder AMD-Prozessor
+          - Flimmer-Windows-ARM64.zip: Geräte mit ARM-Prozessor (z.B. Surface, Snapdragon)
+
+          ZIP entpacken und Flimmer.exe starten, keine Installation nötig."
