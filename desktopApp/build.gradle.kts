@@ -89,7 +89,7 @@ tasks.withType<JavaExec> {
 val flimmerSelfTest by tasks.registering(JavaExec::class) {
     group = "verification"
     dependsOn("jvmMainClasses")
-    mainClass.set("ch.hotihysen.flimmer.desktop.SelfTestKt")
+    mainClass.set("ch.hotihysen.flimmer.desktop.selftest.SelfTestKt")
     classpath = files(
         layout.buildDirectory.dir("classes/kotlin/jvm/main"),
         layout.buildDirectory.dir("processedResources/jvm/main"),

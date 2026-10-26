@@ -1,4 +1,8 @@
-package ch.hotihysen.flimmer.desktop
+package ch.hotihysen.flimmer.desktop.selftest
+
+import ch.hotihysen.flimmer.desktop.Catalog
+import ch.hotihysen.flimmer.desktop.Extensions
+import ch.hotihysen.flimmer.desktop.Store
 
 import com.lagradost.cloudstream3.flimmer.FlimmerKatalog
 import com.lagradost.cloudstream3.flimmer.FlimmerStreams
@@ -10,7 +14,7 @@ import kotlin.system.exitProcess
  * Selbsttest für den GitHub-Build: Erweiterungen installieren und laden, dann einen Film und eine
  * Serie über alle Erweiterungen suchen. Gibt einen Bericht aus; schlägt nur fehl, wenn gar nichts lädt.
  */
-fun main() = runBlocking {
+fun main(): Unit = runBlocking {
     println("== Flimmer Selbsttest · Daten: ${Store.dataDir}")
     Catalog.register()
     val repo = Extensions.fetchRepo(Extensions.DEFAULT_REPO)

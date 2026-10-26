@@ -62,7 +62,10 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          grep -E "^e: |error:|FAILURE|What went wrong" -A3 build.log | head -80 | while IFS= read -r l; do echo "::error::$l"; done
+          # Alle Fehler in eine Meldung (GitHub zeigt höchstens 10 Meldungen pro Schritt)
+          msg=$(grep -E "^e: " build.log | sed -E 's#^e: file:///.*/(desktopApp|library|app)/#\1/#' | sort -u | head -150 | awk '{printf "%s%%0A", $0}')
+          echo "::error::Kompilierfehler%0A$msg"
+          grep -E "What went wrong" -A6 build.log | head -40 | awk '{printf "%s%%0A", $0}' | sed 's/^/::error::/'; echo
 
       - name: Selbsttest (Erweiterungen laden, Quellen suchen)
         if: matrix.arch == 'x64'
