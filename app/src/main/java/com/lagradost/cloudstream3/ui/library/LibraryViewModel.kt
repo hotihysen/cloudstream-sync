@@ -88,6 +88,11 @@ class LibraryViewModel : ViewModel() {
         _pages.postValue(Resource.Success(items))
     }
 
+    /** Flimmer: Typfilter geändert, gleiche Listen neu anzeigen */
+    fun refreshShown() {
+        _pages.value?.let { _pages.postValue(it) }
+    }
+
     fun reloadPages(forceReload: Boolean) {
         // Only skip loading if its not forced and pages is not empty
         if (!forceReload && (pages.value as? Resource.Success)?.value?.isNotEmpty() == true &&

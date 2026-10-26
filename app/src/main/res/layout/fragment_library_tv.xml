@@ -148,6 +148,51 @@
             app:tabSelectedTextColor="?attr/primaryBlackBackground"
             app:tabTextAppearance="@style/TabNoCaps"
             app:tabTextColor="?attr/textColor" />
+            <!-- Flimmer: nach Typ filtern -->
+        <HorizontalScrollView
+            android:id="@+id/flimmer_library_filter_scroll"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:clipToPadding="false"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="6dp"
+            android:scrollbars="none"
+            android:visibility="gone"
+            app:layout_scrollFlags="scroll|enterAlways">
+
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/flimmer_library_filter"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                app:chipSpacingHorizontal="8dp"
+                app:selectionRequired="true"
+                app:singleLine="true"
+                app:singleSelection="true">
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/flimmer_filter_all"
+                    style="@style/FlimmerChip"
+                    android:checked="true"
+                    android:text="Alles" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/flimmer_filter_series"
+                    style="@style/FlimmerChip"
+                    android:text="Serien" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/flimmer_filter_movies"
+                    style="@style/FlimmerChip"
+                    android:text="Filme" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/flimmer_filter_anime"
+                    style="@style/FlimmerChip"
+                    android:text="Anime" />
+            </com.google.android.material.chip.ChipGroup>
+        </HorizontalScrollView>
+
     </com.google.android.material.appbar.AppBarLayout>
 
     <FrameLayout

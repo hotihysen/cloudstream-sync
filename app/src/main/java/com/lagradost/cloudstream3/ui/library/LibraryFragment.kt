@@ -134,9 +134,26 @@ class LibraryFragment : BaseFragment<FragmentLibraryBinding>(
         binding: FragmentLibraryBinding,
         savedInstanceState: Bundle?
     ) {
+        // Flimmer: Filter nach Typ (Serien, Filme, Anime)
+        listOf(
+            binding.flimmerFilterAll to 0, binding.flimmerFilterSeries to 1,
+            binding.flimmerFilterMovies to 2, binding.flimmerFilterAnime to 3,
+        ).forEach { (chip, type) ->
+            chip.isChecked = flimmerTypeFilter == type
+            chip.setOnClickListener {
+                if (flimmerTypeFilter != type) {
+                    flimmerTypeFilter = type
+                    libraryViewModel.refreshShown()
+                }
+                chip.isChecked = true
+            }
+        }
         binding.sortFab.setOnClickListener(sortChangeClickListener)
         // Flimmer: Sortieren gibt es oben in der Suchleiste, der grosse Knopf unten verdeckt Kacheln
-        if (isLayout(PHONE)) binding.sortFab.isVisible = false
+        if (isLayout(PHONE)) {
+            binding.sortFab.isVisible = false
+            binding.librarySort.isVisible = true
+        }
         binding.librarySort.setOnClickListener(sortChangeClickListener)
 
         binding.libraryRoot.findViewById<TextView>(androidx.appcompat.R.id.search_src_text)
@@ -352,8 +369,8 @@ class LibraryFragment : BaseFragment<FragmentLibraryBinding>(
             when (resource) {
                 is Resource.Success -> {
                     handler.removeCallbacks(startLoading)
-                    val pages = resource.value
-                    val showNotice = pages.all { it.items.isEmpty() }
+                    val pages = flimmerFilter(resource.value)
+                    val showNotice = resource.value.all { it.items.isEmpty() }
 
                     binding.apply {
                         emptyListTextview.isVisible = showNotice
@@ -435,7 +452,11 @@ class LibraryFragment : BaseFragment<FragmentLibraryBinding>(
                             libraryTabLayout,
                             viewpager,
                         ) { tab, position ->
-                            tab.text = pages.getOrNull(position)?.title?.asStringNull(context)
+                            tab.text = pages.getOrNull(position)?.let { p ->
+                                val title = p.title.asStringNull(context) ?: ""
+                                // Flimmer: Anzahl im Reiter
+                                if (p.items.isNotEmpty()) "$title  ${p.items.size}" else title
+                            }
                             tab.view.tag = "tv_no_focus_tag"
                             tab.view.nextFocusDownId = R.id.search_result_root
 
@@ -575,3 +596,28 @@ class LibraryFragment : BaseFragment<FragmentLibraryBinding>(
 }
 
 class MenuSearchView(context: Context) : SearchView(context)
+
+/** Flimmer: gewählter Typfilter der Bibliothek (0 = alles, 1 = Serien, 2 = Filme, 3 = Anime) */
+private var flimmerTypeFilter = 0
+
+private fun SyncAPI.LibraryItem.flimmerIsAnime(): Boolean =
+    type == com.lagradost.cloudstream3.TvType.Anime || type == com.lagradost.cloudstream3.TvType.AnimeMovie ||
+            type == com.lagradost.cloudstream3.TvType.OVA || tags?.any { it.equals("anime", true) } == true
+
+private fun SyncAPI.LibraryItem.flimmerIsMovie(): Boolean =
+    type == com.lagradost.cloudstream3.TvType.Movie || type == com.lagradost.cloudstream3.TvType.AnimeMovie
+
+private fun flimmerFilter(pages: List<SyncAPI.Page>): List<SyncAPI.Page> {
+    val f = flimmerTypeFilter
+    if (f == 0) return pages
+    return pages.map { page ->
+        page.copy(items = page.items.filter { item ->
+            when (f) {
+                1 -> !item.flimmerIsMovie() && !item.flimmerIsAnime()
+                2 -> item.flimmerIsMovie() && !item.flimmerIsAnime()
+                3 -> item.flimmerIsAnime()
+                else -> true
+            }
+        })
+    }
+}
