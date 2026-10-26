@@ -124,6 +124,46 @@ jobs:
           path: Flimmer-Windows-${{ matrix.arch }}.zip
           retention-days: 7
 
+  vorschau:
+    # Startet die App auf Linux in einem virtuellen Bildschirm und macht Fotos (Prüfung der Oberfläche)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v5
+      - name: App starten und fotografieren
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          FLIMMER_TRAKT_ID: ${{ secrets.FLIMMER }}
+          FLIMMER_DATA: ${{ runner.temp }}/flimmer-daten
+        run: |
+          sudo apt-get install -y xvfb imagemagick xdotool > /dev/null
+          ./gradlew :desktopApp:jvmMainClasses --no-daemon --console=plain -q
+          Xvfb :99 -screen 0 1600x1000x24 &
+          export DISPLAY=:99
+          sleep 2
+          (timeout 300 ./gradlew :desktopApp:run --no-daemon --console=plain > run.log 2>&1 &)
+          mkdir -p shots
+          for t in 60 120 180; do sleep 60; import -window root shots/start-$t.png; done
+          # Klick auf den ersten Titel der ersten Reihe (Detailseite)
+          WID=$(xdotool search --name "^Flimmer$" | head -1); echo "Fenster: $WID"
+          xdotool getwindowgeometry $WID || true
+          xdotool mousemove --window $WID 200 720 click 1; sleep 15; import -window root shots/detail.png
+          xdotool key Escape; sleep 3
+          xdotool mousemove --window $WID 1345 34 click 1; sleep 8; import -window root shots/einstellungen.png
+          tail -60 run.log | awk '{printf "%s%%0A", $0}' | sed 's/^/::notice::Log%0A/'; echo
+      - name: Fotos hochladen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete vorschau -y --cleanup-tag || true
+          sleep 2
+          gh release create vorschau shots/*.png --prerelease --latest=false --title "Vorschau (automatisch)" --notes "Bildschirmfotos aus dem Build, nur zur Kontrolle."
+
   release:
     needs: build
     if: always()
