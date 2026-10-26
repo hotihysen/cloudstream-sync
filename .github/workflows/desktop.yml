@@ -83,7 +83,7 @@ jobs:
         run: |
           timeout 600 ./gradlew :desktopApp:flimmerSelfTest --no-daemon --console=plain 2>&1 | tee selftest.log
           set +e +o pipefail
-          tr -d '\r' < selftest.log | sed -n '/== Flimmer Selbsttest/,$p' | grep -vE "^> Task|^$|^(I|W|D)/|^INFO|^DEBUG|^WARN| OK   " | head -150 | awk '{printf "%s%%0A", $0}' > notice.txt
+          tr -d '\r' < selftest.log | sed -n '/== Flimmer Selbsttest/,$p' | grep -vE "^> Task|^$|^(I|W|D)/|^INFO|^DEBUG|^WARN| OK   |^[[:space:]]+at |^[[:space:]]*\\.\\.\\.|okhttp3|Please ensure|^[A-Z][a-z]{2} [0-9]+, 20|^java\\.|^kotlin|^Caused" | head -150 | awk '{printf "%s%%0A", $0}' > notice.txt
           echo "::notice::Selbsttest%0A$(cat notice.txt)"
           exit 0
 
