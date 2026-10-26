@@ -62,10 +62,16 @@ jobs:
         if: failure()
         shell: bash
         run: |
+          set +e +o pipefail
+          tr -d '\r' < build.log > b.log
           # Alle Fehler in eine Meldung (GitHub zeigt höchstens 10 Meldungen pro Schritt)
-          msg=$(grep -E "^e: " build.log | sed -E 's#^e: file:///.*/(desktopApp|library|app)/#\1/#' | sort -u | head -150 | awk '{printf "%s%%0A", $0}')
-          echo "::error::Kompilierfehler%0A$msg"
-          grep -E "What went wrong" -A6 build.log | head -40 | awk '{printf "%s%%0A", $0}' | sed 's/^/::error::/'; echo
+          errs=$(grep -E "^e: " b.log | sed -E 's#^e: file:///.*/(desktopApp|library|app)/#\1/#' | sort -u | head -150 | awk '{printf "%s%%0A", $0}')
+          echo "::error::Kompilierfehler%0A${errs}"
+          wrong=$(grep -E "What went wrong" -A8 b.log | head -60 | awk '{printf "%s%%0A", $0}')
+          echo "::error::Gradle%0A${wrong}"
+          tail -40 b.log | awk '{printf "%s%%0A", $0}' | sed 's/^/::error::Ende%0A/'
+          echo
+          exit 0
 
       - name: Selbsttest (Erweiterungen laden, Quellen suchen)
         if: matrix.arch == 'x64'
