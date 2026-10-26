@@ -54,12 +54,15 @@ jobs:
         env:
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
           FLIMMER_TRAKT_ID: ${{ secrets.FLIMMER }}
-        run: ./gradlew :desktopApp:createDistributable --no-daemon --console=plain 2>&1 | tee build.log; exit ${PIPESTATUS[0]}
+        run: |
+          ./gradlew :desktopApp:createDistributable --no-daemon --console=plain 2>&1 | tee build.log
+          exit ${PIPESTATUS[0]}
 
       - name: Kompilierfehler anzeigen
         if: failure()
         shell: bash
-        run: grep -E "^e: |error:|FAILURE|What went wrong" -A3 build.log | head -80 | while IFS= read -r l; do echo "::error::$l"; done
+        run: |
+          grep -E "^e: |error:|FAILURE|What went wrong" -A3 build.log | head -80 | while IFS= read -r l; do echo "::error::$l"; done
 
       - name: Selbsttest (Erweiterungen laden, Quellen suchen)
         if: matrix.arch == 'x64'

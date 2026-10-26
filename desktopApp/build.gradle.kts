@@ -90,9 +90,10 @@ val flimmerSelfTest by tasks.registering(JavaExec::class) {
     group = "verification"
     dependsOn("jvmMainClasses")
     mainClass.set("ch.hotihysen.flimmer.desktop.SelfTestKt")
-    val jvmTarget = kotlin.targets.getByName("jvm") as org.jetbrains.kotlin.gradle.plugin.mpp.KotlinJvmTarget
-    val main = jvmTarget.compilations.getByName("main")
-    classpath = files(main.output.allOutputs, main.runtimeDependencyFiles)
+    classpath = files(
+        layout.buildDirectory.dir("classes/kotlin/jvm/main"),
+        layout.buildDirectory.dir("processedResources/jvm/main"),
+    ) + configurations.getByName("jvmRuntimeClasspath")
     environment("FLIMMER_DATA", layout.buildDirectory.dir("selftest").get().asFile.absolutePath)
 }
 
