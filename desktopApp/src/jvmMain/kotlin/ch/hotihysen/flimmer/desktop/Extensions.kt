@@ -214,7 +214,7 @@ object Extensions {
                     json.decodeFromString(Manifest.serializer(), zip.getInputStream(e).readBytes().decodeToString())
                 } ?: throw IllegalStateException("manifest.json fehlt")
                 val dexEntry = zip.getEntry("classes.dex") ?: throw IllegalStateException("classes.dex fehlt")
-                val out = File(Store.cacheDir, "jar/${safe(info.internalName)}-v${info.version}-${cs3.length()}")
+                val out = File(Store.cacheDir, "jar2/${safe(info.internalName)}-v${info.version}-${cs3.length()}")
                 if (!File(out, ".fertig").exists()) {
                     out.deleteRecursively()
                     out.mkdirs()
@@ -222,7 +222,6 @@ object Extensions {
                     Dex2jar.from(dex)
                         .skipDebug(false)
                         .topoLogicalSort()
-                        .skipExceptions(true)
                         .to(out.toPath())
                     File(out, ".fertig").writeText("ok")
                 }
