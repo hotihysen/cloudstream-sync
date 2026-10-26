@@ -82,7 +82,10 @@ jobs:
           FLIMMER_TRAKT_ID: ${{ secrets.FLIMMER }}
         run: |
           timeout 600 ./gradlew :desktopApp:flimmerSelfTest --no-daemon --console=plain 2>&1 | tee selftest.log
-          grep -E "OK  |FEHL|Erweiterungen geladen|^-> |: [0-9]+ Links|Zeitüberschreitung|nicht im Angebot|kein passender|Fehler" selftest.log | head -120 | while IFS= read -r l; do echo "::notice::$l"; done
+          set +e +o pipefail
+          tr -d '\r' < selftest.log | sed -n '/== Flimmer Selbsttest/,$p' | grep -vE "^> Task|^$|^(I|W)/" | head -150 | awk '{printf "%s%%0A", $0}' > notice.txt
+          echo "::notice::Selbsttest%0A$(cat notice.txt)"
+          exit 0
 
       - name: mpv holen
         shell: bash
