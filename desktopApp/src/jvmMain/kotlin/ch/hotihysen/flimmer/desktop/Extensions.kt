@@ -91,11 +91,14 @@ object Extensions {
     // ---------------------------------------------------------------- Repos
 
     fun repos(): List<String> {
-        val raw = Store.getString("repos") ?: return listOf(DEFAULT_REPO).also { saveRepos(it) }
+        val raw = Store.getString("repos") ?: return emptyList() // Repos fügst du selbst hinzu
         return raw.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
     }
 
     private fun saveRepos(list: List<String>) = Store.putString("repos", list.distinct().joinToString("\n"))
+
+    /** Nur für den Selbsttest im Build */
+    // DEFAULT_REPO wird nicht automatisch eingetragen
 
     /** «cloudstreamrepo://…» und Adressen ohne https:// in eine normale Adresse umwandeln. */
     fun normalizeRepoUrl(input: String): String {

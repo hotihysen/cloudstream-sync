@@ -164,28 +164,11 @@ fun App(nav: Nav) {
             .build()
     }
     var startupDone by remember { mutableStateOf(false) }
-    var startupText by remember { mutableStateOf("Erweiterungen werden geladen …") }
+    val startupText = "Erweiterungen werden geladen …"
 
     LaunchedEffect(Unit) {
         Catalog.register()
         Extensions.loadAll()
-        // Erster Start: deutsche Erweiterungen aus dem Standard-Repo installieren
-        if (!Store.getBoolean("firstRunDone", false)) {
-            startupText = "Erster Start: Erweiterungen werden eingerichtet …"
-            try {
-                val repo = Extensions.fetchRepo(Extensions.DEFAULT_REPO)
-                repo.plugins.filter { p ->
-                    val types = p.tvTypes.orEmpty()
-                    types.any { it in setOf("Movie", "TvSeries", "Anime", "AnimeMovies", "Series") }
-                }.forEach { p ->
-                    startupText = "Installiere ${p.name} …"
-                    try { Extensions.install(repo.url, p) } catch (_: Throwable) {}
-                }
-                Store.putBoolean("firstRunDone", true)
-            } catch (t: Throwable) {
-                System.err.println("Erster Start: ${t.message}")
-            }
-        }
         startupDone = true
         launch(Dispatchers.IO) { Sync.pull() }
         launch(Dispatchers.IO) { Extensions.updateAll() }
@@ -266,7 +249,7 @@ private fun PlaybackOverlay(s: PlaybackSession, nav: Nav) {
             Modifier.width(760.dp).heightIn(max = 760.dp).clip(RoundedCornerShape(14.dp))
                 .background(FlimmerColors.Surface).padding(26.dp)
         ) {
-            Text(s.title, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(s.nowPlaying, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Gap(h = 8)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (s.phase == PlaybackSession.Phase.Searching || s.phase == PlaybackSession.Phase.Playing) {
@@ -277,13 +260,18 @@ private fun PlaybackOverlay(s: PlaybackSession, nav: Nav) {
                     when (s.phase) {
                         PlaybackSession.Phase.Searching -> "Quellen werden gesucht … ${s.links.size} gefunden" +
                                 if (s.searchFinished) " (Suche fertig)" else ""
-                        PlaybackSession.Phase.Playing -> "Läuft im Player. Schliesse das Player-Fenster, um zurückzukehren."
+                        PlaybackSession.Phase.Playing -> "Läuft im Player. Schliesse das Player-Fenster, um zurückzukehren." +
+                                (s.nextInfo?.let { "\n$it" } ?: "")
                         PlaybackSession.Phase.Failed -> s.message ?: "Fehler"
                         PlaybackSession.Phase.Done -> "Fertig"
                     },
                     color = if (s.phase == PlaybackSession.Phase.Failed) FlimmerColors.Accent else FlimmerColors.TextDim,
                     fontSize = 14.sp,
                 )
+            }
+            if (s.phase == PlaybackSession.Phase.Playing) {
+                Gap(h = 12)
+                Dim("Im Player: N = nächste Folge · S = Quellen wechseln · I = Intro überspringen · Leertaste = Pause · F = Vollbild", 13)
             }
             if (s.phase != PlaybackSession.Phase.Playing) {
                 Gap(h = 14)

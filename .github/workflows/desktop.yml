@@ -101,6 +101,16 @@ jobs:
           7z x -y -o"$dist/mpv" mpv.7z > /dev/null
           ls "$dist" "$dist/mpv"
           test -f "$dist/mpv/mpv.exe"
+          # Moderne Player-Oberfläche uosc und Flimmer-Einstellungen (portable_config neben mpv.exe)
+          cfg="$dist/mpv/portable_config"
+          mkdir -p "$cfg"
+          uurl=$(gh api repos/tomasklaen/uosc/releases/latest --jq '.assets[] | select(.name=="uosc.zip") | .browser_download_url')
+          echo "uosc: $uurl"
+          curl -sSL -o uosc.zip "$uurl"
+          7z x -y -o"$cfg" uosc.zip > /dev/null
+          cp -r desktopApp/mpv-config/* "$cfg/"
+          ls -R "$cfg" | head -30
+          test -f "$cfg/scripts/uosc/main.lua"
 
       - name: ZIP erstellen
         shell: pwsh
@@ -135,13 +145,41 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v5
+      - name: Player-Skript testen (Quellenwechsel, nächste Folge, Ende)
+        run: |
+          set +e
+          sudo apt-get update -q > /dev/null
+          sudo apt-get install -y -q mpv ffmpeg socat > /dev/null
+          mkdir -p pt && cd pt
+          ffmpeg -loglevel error -f lavfi -i testsrc=duration=25:size=320x240:rate=10 -f lavfi -i sine=duration=25 -shortest a.mp4
+          ffmpeg -loglevel error -f lavfi -i testsrc2=duration=12:size=320x240:rate=10 -f lavfi -i sine=duration=12 -shortest b.mp4
+          cat > s.json <<JSON
+          {"current":0,"episodes":[
+           {"title":"Test 1","start":5,"searching":false,"subs":[],"links":[{"name":"kaputt","url":"$PWD/fehlt.mp4","referer":"","headers":{}},{"name":"A","url":"$PWD/a.mp4","referer":"","headers":{"X-Test":"1"}}]},
+           {"title":"Test 2","start":0,"searching":false,"subs":[],"links":[{"name":"B","url":"$PWD/b.mp4","referer":"","headers":{}}]}
+          ]}
+          JSON
+          mpv --idle=yes --vo=null --ao=null --keep-open=yes --msg-level=all=info \
+            --script=$GITHUB_WORKSPACE/desktopApp/src/jvmMain/resources/flimmer.lua \
+            --script-opts-append=flimmer-session=$PWD/s.json --script-opts-append=flimmer-status=$PWD/st.txt \
+            --input-ipc-server=/tmp/mpvsock > mpv.log 2>&1 &
+          MPV=$!
+          sleep 7; s1=$(cat st.txt 2>/dev/null)
+          echo '{"command":["script-message-to","flimmer","next"]}' | socat - /tmp/mpvsock > /dev/null
+          sleep 5; s2=$(cat st.txt 2>/dev/null)
+          sleep 25
+          if kill -0 $MPV 2>/dev/null; then ende="mpv läuft noch (FEHLER)"; kill $MPV; else ende="mpv nach dem Ende beendet (OK)"; fi
+          r1=$([ "${s1%% *}" = "0" ] && echo OK || echo FEHLER); r2=$([ "${s2%% *}" = "1" ] && echo OK || echo FEHLER)
+          msg="Player-Test%0AFolge 1 (kaputte Quelle übersprungen, Start bei 5 s): $s1 -> $r1%0ANach «next»: $s2 -> $r2%0A$ende%0A$(grep -i "flimmer\|error\|fehl" mpv.log | head -20 | awk '{printf "%s%%0A", $0}')"
+          echo "::notice::$msg"
+          exit 0
+
       - name: App starten und fotografieren
         env:
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
           FLIMMER_TRAKT_ID: ${{ secrets.FLIMMER }}
           FLIMMER_DATA: ${{ runner.temp }}/flimmer-daten
         run: |
-          sudo apt-get update -q > /dev/null
           sudo apt-get install -y -q xvfb imagemagick xdotool > /dev/null
           ./gradlew :desktopApp:jvmMainClasses --no-daemon --console=plain -q
           Xvfb :99 -screen 0 1600x1000x24 &
