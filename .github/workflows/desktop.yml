@@ -141,7 +141,8 @@ jobs:
           FLIMMER_TRAKT_ID: ${{ secrets.FLIMMER }}
           FLIMMER_DATA: ${{ runner.temp }}/flimmer-daten
         run: |
-          sudo apt-get install -y xvfb imagemagick xdotool > /dev/null
+          sudo apt-get update -q > /dev/null
+          sudo apt-get install -y -q xvfb imagemagick xdotool > /dev/null
           ./gradlew :desktopApp:jvmMainClasses --no-daemon --console=plain -q
           Xvfb :99 -screen 0 1600x1000x24 &
           export DISPLAY=:99
@@ -157,6 +158,7 @@ jobs:
           xdotool mousemove --window $WID 1345 34 click 1; sleep 8; import -window root shots/einstellungen.png
           tail -60 run.log | awk '{printf "%s%%0A", $0}' | sed 's/^/::notice::Log%0A/'; echo
       - name: Fotos hochladen
+        if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
