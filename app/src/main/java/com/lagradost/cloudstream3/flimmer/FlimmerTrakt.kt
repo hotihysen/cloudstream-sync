@@ -119,11 +119,15 @@ object FlimmerTrakt {
 
     // ------------------------------------------------------------------ Scrobbeln
 
-    private class Active(val id: Int, val body: (Double) -> String) {
+    private class Active(val id: Int, val body: (Double) -> String, val syncId: String?) {
         var started = false
         var stopped = false
+        var markedWatching = false
         var lastProgress = 0.0
     }
+
+    /** Ab dieser Spielzeit gilt ein Titel als angefangen und erscheint bei Trakt unter «Am schauen». */
+    private const val WATCHING_AFTER_MS = 10 * 60_000L
 
     @Volatile private var active: Active? = null
 
@@ -148,26 +152,35 @@ object FlimmerTrakt {
         if (a == null || a.id != ep.id) {
             a?.let { old -> if (old.started && !old.stopped) send("pause", old.body(old.lastProgress)) }
             // Katalog-Titel tragen ihre TMDB-ID direkt in den Abspieldaten
-            val body = if (FlimmerKatalog.isKatalog(ep.apiName)) {
+            val syncId = if (FlimmerKatalog.isKatalog(ep.apiName)) {
                 try {
                     val link = parseJson<FlimmerKatalog.LinkData>(ep.data)
-                    scrobbleBody(
-                        "${if (link.isTv) "show" else "movie"}:tmdb:${link.tmdbId}",
-                        link.season, link.episode
-                    )
+                    "${if (link.isTv) "show" else "movie"}:tmdb:${link.tmdbId}" to (link.season to link.episode)
                 } catch (t: Throwable) {
                     null
                 }
             } else {
-                knownIds[ep.parentId]?.let { scrobbleBody(it, ep.season, ep.episode) }
+                knownIds[ep.parentId]?.let { it to (ep.season to ep.episode) }
             } ?: return
-            a = Active(ep.id, body)
+            val body = scrobbleBody(syncId.first, syncId.second.first, syncId.second.second) ?: return
+            a = Active(ep.id, body, syncId.first)
             active = a
         }
         a.lastProgress = progress
         if (!a.started && progress < 80.0) {
             a.started = true
             send("start", a.body(progress))
+        }
+        // Nach 10 Minuten (bei kurzen Folgen nach 40 %): Position bei Trakt speichern, damit der Titel
+        // unter «Am schauen» erscheint, und aus «Geplant» nehmen
+        if (!a.markedWatching && !a.stopped && (position >= WATCHING_AFTER_MS || progress >= 40.0)) {
+            a.markedWatching = true
+            val body = a.body
+            val syncId = a.syncId
+            send("pause", body(progress)) {
+                send("start", body(progress))
+                syncId?.let { removeFromWatchlist(it) }
+            }
         }
         if (!a.stopped && progress >= 80.0) {
             a.stopped = true
@@ -182,7 +195,7 @@ object FlimmerTrakt {
         active = null
     }
 
-    private fun send(action: String, body: String) {
+    private fun send(action: String, body: String, then: (suspend () -> Unit)? = null) {
         scope.launch {
             try {
                 val t = token() ?: return@launch
@@ -190,10 +203,24 @@ object FlimmerTrakt {
                     "$API/scrobble/$action", headers = headers(t), requestBody = body.toRequestBody(JSON)
                 )
                 if (!res.isSuccessful && res.code != 409) Log.w(TAG, "scrobble/$action ${res.code}")
-                if (action == "stop") AccountManager.traktApi.requireLibraryRefresh = true
+                if (action == "stop" || action == "pause") AccountManager.traktApi.requireLibraryRefresh = true
+                then?.invoke()
             } catch (t: Throwable) {
                 Log.w(TAG, "scrobble/$action", t)
             }
+        }
+    }
+
+    private suspend fun removeFromWatchlist(syncId: String) {
+        val tid = TraktApi.Companion.TraktId.parse(syncId) ?: return
+        val t = token() ?: return
+        val body = mapOf((if (tid.isShow) "shows" else "movies") to listOf(mapOf("ids" to tid.ids()))).toJson()
+        try {
+            com.lagradost.cloudstream3.app.post(
+                "$API/sync/watchlist/remove", headers = headers(t), requestBody = body.toRequestBody(JSON)
+            )
+        } catch (e: Throwable) {
+            Log.w(TAG, "watchlist/remove", e)
         }
     }
 

@@ -119,6 +119,7 @@ class TraktApi : SyncAPI() {
         @JsonProperty("overview") @SerialName("overview") val overview: String? = null,
         @JsonProperty("rating") @SerialName("rating") val rating: Double? = null,
         @JsonProperty("aired_episodes") @SerialName("aired_episodes") val airedEpisodes: Int? = null,
+        @JsonProperty("runtime") @SerialName("runtime") val runtime: Int? = null,
         @JsonProperty("genres") @SerialName("genres") val genres: List<String> = emptyList(),
         @JsonProperty("images") @SerialName("images") val images: Images? = null,
     )
@@ -206,7 +207,28 @@ class TraktApi : SyncAPI() {
     data class Progress(
         @JsonProperty("aired") @SerialName("aired") val aired: Int = 0,
         @JsonProperty("completed") @SerialName("completed") val completed: Int = 0,
+        @JsonProperty("next_episode") @SerialName("next_episode") val nextEpisode: EpisodeRef? = null,
     )
+
+    @Serializable
+    data class EpisodeRef(
+        @JsonProperty("season") @SerialName("season") val season: Int = 0,
+        @JsonProperty("number") @SerialName("number") val number: Int = 0,
+        @JsonProperty("title") @SerialName("title") val title: String? = null,
+    )
+
+    /** Angefangene Filme und Folgen (Trakt merkt sich die Position beim Pausieren/Stoppen). */
+    @Serializable
+    data class PlaybackEntry(
+        @JsonProperty("progress") @SerialName("progress") val progress: Double = 0.0,
+        @JsonProperty("paused_at") @SerialName("paused_at") val pausedAt: String? = null,
+        @JsonProperty("type") @SerialName("type") val type: String? = null,
+        @JsonProperty("movie") @SerialName("movie") val movie: Media? = null,
+        @JsonProperty("show") @SerialName("show") val show: Media? = null,
+        @JsonProperty("episode") @SerialName("episode") val episode: EpisodeRef? = null,
+    ) {
+        fun asListEntry() = ListEntry(lastWatchedAt = pausedAt, movie = movie, show = show)
+    }
 
     @Serializable
     data class SearchHit(
@@ -302,6 +324,7 @@ class TraktApi : SyncAPI() {
         val favorites: List<ListEntry>,
         /** Trakt-ID der Serie → (ausgestrahlt, gesehen), wie Trakt selbst es zählt */
         val progress: Map<Int, Progress>,
+        val playback: List<PlaybackEntry>,
         val time: Long,
     )
 
@@ -336,6 +359,15 @@ class TraktApi : SyncAPI() {
             val rS = async { fetchList("/sync/ratings/shows", token) }
             val fM = async { fetchList("/sync/favorites/movies?extended=full,images", token) }
             val fS = async { fetchList("/sync/favorites/shows?extended=full,images", token) }
+            val pb = async {
+                try {
+                    val res = get("/sync/playback?extended=full,images&limit=100", token)
+                    if (res.isSuccessful) parseJson<List<PlaybackEntry>>(res.text) else emptyList()
+                } catch (t: Throwable) {
+                    Log.w(TAG, "playback", t)
+                    emptyList()
+                }
+            }
             val shows = wS.await()
             Lists(
                 watchlist = wlM.await() + wlS.await(),
@@ -344,6 +376,7 @@ class TraktApi : SyncAPI() {
                 ratings = rM.await() + rS.await(),
                 favorites = fM.await() + fS.await(),
                 progress = progressFor(shows, token),
+                playback = pb.await(),
                 time = System.currentTimeMillis(),
             )
         }
@@ -354,7 +387,7 @@ class TraktApi : SyncAPI() {
     // ------------------------------------------------------------------ Fortschritt pro Serie
 
     private val progressSemaphore = kotlinx.coroutines.sync.Semaphore(6)
-    private val progressFolder = "flimmer_trakt_progress"
+    private val progressFolder = "flimmer_trakt_progress2"
 
     /**
      * Fragt für jede gesehene Serie den Fortschritt bei Trakt ab (ausgestrahlte vs. gesehene Folgen).
@@ -368,11 +401,14 @@ class TraktApi : SyncAPI() {
             val stamp = entry.lastWatchedAt ?: ""
             async {
                 val cached = com.lagradost.cloudstream3.CloudStreamApp.getKey<String>(progressFolder, id.toString())
-                    ?.split("|")
-                if (cached != null && cached.size == 4 && cached[0] == stamp &&
-                    now - (cached[3].toLongOrNull() ?: 0L) < 24 * 3600_000L
+                    ?.split("|", limit = 3)
+                if (cached != null && cached.size == 3 && cached[0] == stamp &&
+                    now - (cached[1].toLongOrNull() ?: 0L) < 24 * 3600_000L
                 ) {
-                    return@async id to Progress(cached[1].toInt(), cached[2].toInt())
+                    try {
+                        return@async id to parseJson<Progress>(cached[2])
+                    } catch (_: Throwable) {
+                    }
                 }
                 progressSemaphore.withPermit {
                     try {
@@ -380,7 +416,7 @@ class TraktApi : SyncAPI() {
                         if (!res.isSuccessful) return@withPermit null
                         val p = parseJson<Progress>(res.text)
                         com.lagradost.cloudstream3.CloudStreamApp.setKey(
-                            progressFolder, id.toString(), "$stamp|${p.aired}|${p.completed}|$now"
+                            progressFolder, id.toString(), "$stamp|$now|${p.toJson()}"
                         )
                         id to p
                     } catch (t: Throwable) {
@@ -411,16 +447,19 @@ class TraktApi : SyncAPI() {
             val p = w?.show?.ids?.trakt?.let { l.progress[it] }
             val count = p?.completed ?: w?.watchedEpisodes() ?: 0
             val aired = p?.aired ?: w?.show?.airedEpisodes ?: inWatchlist?.show?.airedEpisodes
+            val started = l.playback.any { it.show != null && tid.matches(it.show.ids) }
             val st = when {
                 w != null && (isComplete(p) || (p == null && aired != null && aired > 0 && count >= aired)) -> SyncWatchType.COMPLETED
-                count > 0 -> SyncWatchType.WATCHING
+                count > 0 || started -> SyncWatchType.WATCHING
                 inWatchlist != null -> SyncWatchType.PLANTOWATCH
                 else -> SyncWatchType.NONE
             }
             Triple(st, count, aired)
         } else {
             val w = l.watchedMovies.find()
+            val started = l.playback.any { it.movie != null && tid.matches(it.movie.ids) }
             val st = when {
+                started -> SyncWatchType.WATCHING
                 (w?.plays ?: 0) > 0 -> SyncWatchType.COMPLETED
                 inWatchlist != null -> SyncWatchType.PLANTOWATCH
                 else -> SyncWatchType.NONE
@@ -626,18 +665,56 @@ class TraktApi : SyncAPI() {
 
         val watching = mutableListOf<LibraryItem>()
         val completed = mutableListOf<LibraryItem>()
+        val info = HashMap<String, String>()
+        // Angefangene Folgen pro Serie (Trakt-ID → zuletzt pausierte Folge)
+        val pausedEpisode = l.playback.filter { it.show != null && it.episode != null }
+            .sortedByDescending { it.pausedAt ?: "" }
+            .distinctBy { it.show?.ids?.trakt }
         for (s in l.watchedShows) {
             val p = s.show?.ids?.trakt?.let { l.progress[it] }
             val count = p?.completed ?: s.watchedEpisodes()
             val aired = p?.aired ?: s.show?.airedEpisodes
             val item = s.toLibraryItem(ratings, posters, count, aired) ?: continue
             val done = isComplete(p) || (p == null && aired != null && aired > 0 && count >= aired)
-            if (done) completed += item else watching += item
+            val paused = pausedEpisode.firstOrNull { it.show?.ids?.trakt == s.show?.ids?.trakt }
+            info[item.syncId] = when {
+                paused?.episode != null -> "S${paused.episode.season} · F${paused.episode.number} angefangen"
+                p?.nextEpisode != null && !done -> "Als Nächstes: S${p.nextEpisode.season} · F${p.nextEpisode.number}"
+                aired != null && aired > 0 -> "$count von $aired Folgen"
+                else -> "$count Folgen gesehen"
+            }
+            // Neue Folgen erschienen: wieder unter «Am schauen»
+            if (done && paused == null) completed += item else watching += item
         }
-        l.watchedMovies.mapNotNullTo(completed) { it.toLibraryItem(ratings, posters, 1, 1) }
+        // Serien, deren erste Folge angefangen ist (noch keine ganz gesehen)
+        for (pb in pausedEpisode) {
+            if (l.watchedShows.any { it.show?.ids?.trakt == pb.show?.ids?.trakt }) continue
+            val item = pb.asListEntry().toLibraryItem(ratings, posters, 0, pb.show?.airedEpisodes) ?: continue
+            info[item.syncId] = "S${pb.episode?.season} · F${pb.episode?.number} angefangen"
+            watching += item
+        }
+        // Angefangene Filme: Fortschritt in Prozent
+        for (pb in l.playback.filter { it.movie != null }.distinctBy { it.movie?.ids?.trakt }) {
+            val pct = pb.progress.toInt().coerceIn(1, 99)
+            val item = pb.asListEntry().toLibraryItem(ratings, posters, pct, 100) ?: continue
+            val runtime = pb.movie?.runtime
+            info[item.syncId] = if (runtime != null && runtime > 0)
+                "Noch ${((100 - pct) * runtime / 100).coerceAtLeast(1)} Min." else "$pct % geschaut"
+            watching += item
+        }
+        // Was angefangen ist, steht nicht mehr unter «Geplant» bzw. «Abgeschlossen»
+        val watchingIds = watching.map { it.syncId }.toSet()
+        for (m in l.watchedMovies) {
+            val item = m.toLibraryItem(ratings, posters, 1, 1) ?: continue
+            if (item.syncId in watchingIds) continue
+            info[item.syncId] = "Gesehen" + ((m.plays ?: 0).takeIf { it > 1 }?.let { " · $it×" } ?: "")
+            completed += item
+        }
+        val planned = l.watchlist.mapNotNull { it.toLibraryItem(ratings, posters) }.filter { it.syncId !in watchingIds }
+        com.lagradost.cloudstream3.flimmer.FlimmerLibraryInfo.update(info)
 
         val lists = listOf(
-            LibraryList(txt(R.string.type_plan_to_watch), l.watchlist.mapNotNull { it.toLibraryItem(ratings, posters) }),
+            LibraryList(txt(R.string.type_plan_to_watch), planned),
             LibraryList(txt(R.string.type_watching), watching),
             LibraryList(txt(R.string.type_completed), completed),
             LibraryList(txt(R.string.favorites_list_name), l.favorites.mapNotNull { it.toLibraryItem(ratings, posters) }),

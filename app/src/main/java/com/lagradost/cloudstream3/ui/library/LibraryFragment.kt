@@ -135,6 +135,8 @@ class LibraryFragment : BaseFragment<FragmentLibraryBinding>(
         savedInstanceState: Bundle?
     ) {
         binding.sortFab.setOnClickListener(sortChangeClickListener)
+        // Flimmer: Sortieren gibt es oben in der Suchleiste, der grosse Knopf unten verdeckt Kacheln
+        if (isLayout(PHONE)) binding.sortFab.isVisible = false
         binding.librarySort.setOnClickListener(sortChangeClickListener)
 
         binding.libraryRoot.findViewById<TextView>(androidx.appcompat.R.id.search_src_text)
@@ -282,10 +284,10 @@ class LibraryFragment : BaseFragment<FragmentLibraryBinding>(
         binding.viewpager.adapter = ViewpagerAdapter(
             { isScrollingDown: Boolean ->
                 if (isScrollingDown) {
-                    binding.sortFab.shrink()
+                    if (binding.sortFab.isVisible) binding.sortFab.shrink()
                     binding.libraryRandom.shrink()
                 } else {
-                    binding.sortFab.extend()
+                    if (binding.sortFab.isVisible) binding.sortFab.extend()
                     binding.libraryRandom.extend()
                 }
             }) callback@{ searchClickCallback ->

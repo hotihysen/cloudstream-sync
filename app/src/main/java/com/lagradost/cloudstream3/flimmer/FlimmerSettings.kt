@@ -52,7 +52,7 @@ fun flimmerTraktGroup(): Preference.PreferenceGroup {
             ),
             Preference.PreferenceItem.TextPreference(
                 title = "Scrobbeln",
-                subtitle = if (scrobble) "An: Was du schaust, wird an Trakt gemeldet und ab 80 % als gesehen markiert"
+                subtitle = if (scrobble) "An: Was du schaust, wird an Trakt gemeldet. Ab 10 Minuten steht es unter «Am schauen», ab 80 % gilt es als gesehen"
                 else "Aus",
                 icon = painterResource(R.drawable.baseline_sync_24),
                 enabled = loggedIn,
