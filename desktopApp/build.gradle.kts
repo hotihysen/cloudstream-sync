@@ -13,31 +13,28 @@ val flimmerVersion = rootProject.file("desktop-version.txt").takeIf { it.exists(
 val runNumber = System.getenv("GITHUB_RUN_NUMBER") ?: "lokal"
 
 /** Schlüssel kommen beim Build aus den GitHub-Secrets (gleich wie bei der Android-App). */
+fun kotlinString(s: String) = s.replace("\\", "\\\\").replace("\"", "\\\"").replace("$", "\\$")
+
+val flimmerConfigSource: String = """
+    |package com.lagradost.cloudstream3
+    |
+    |object BuildConfig {
+    |    const val TMDB_API_KEY = "${kotlinString(System.getenv("TMDB_API_KEY") ?: "")}"
+    |    const val FLIMMER_TRAKT_ID = "${kotlinString(System.getenv("FLIMMER_TRAKT_ID") ?: "")}"
+    |    const val FLIMMER_VERSION = "${kotlinString(flimmerVersion)}"
+    |    const val FLIMMER_BUILD = "${kotlinString(runNumber)}"
+    |}
+    |""".trimMargin()
+
 val generateFlimmerConfig by tasks.registering {
     val out = layout.buildDirectory.dir("generated/flimmerConfig/kotlin")
-    val tmdb = System.getenv("TMDB_API_KEY") ?: ""
-    val trakt = System.getenv("FLIMMER_TRAKT_ID") ?: ""
-    inputs.property("tmdb", tmdb)
-    inputs.property("trakt", trakt)
-    inputs.property("version", flimmerVersion)
-    inputs.property("run", runNumber)
+    val source = flimmerConfigSource
+    inputs.property("source", source)
     outputs.dir(out)
     doLast {
         val dir = out.get().asFile.resolve("com/lagradost/cloudstream3")
         dir.mkdirs()
-        fun esc(s: String) = s.replace("\\", "\\\\").replace("\"", "\\\"").replace("$", "\\$")
-        dir.resolve("BuildConfig.kt").writeText(
-            """
-            |package com.lagradost.cloudstream3
-            |
-            |object BuildConfig {
-            |    const val TMDB_API_KEY = "${esc(tmdb)}"
-            |    const val FLIMMER_TRAKT_ID = "${esc(trakt)}"
-            |    const val FLIMMER_VERSION = "${esc(flimmerVersion)}"
-            |    const val FLIMMER_BUILD = "${esc(runNumber)}"
-            |}
-            |""".trimMargin()
-        )
+        dir.resolve("BuildConfig.kt").writeText(source)
     }
 }
 
