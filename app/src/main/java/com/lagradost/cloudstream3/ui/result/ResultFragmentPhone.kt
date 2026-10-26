@@ -740,9 +740,22 @@ open class ResultFragmentPhone : BaseFragment<FragmentResultSwipeBinding>(
                     resultResumeParent.isVisible = false
                     resultPlayParent.isVisible = true
                     resultResumeProgressHolder.isVisible = false
+                    flimmerResumeRemove.isVisible = false
                     return@observeNullable
                 }
                 resultResumeParent.isVisible = true
+                // Flimmer: aus «Weiterschauen» entfernen (auch bei Trakt)
+                flimmerResumeRemove.isVisible = true
+                flimmerResumeRemove.setOnClickListener {
+                    val ep = resume.result
+                    com.lagradost.cloudstream3.utils.DataStoreHelper.removeLastWatched(ep.parentId)
+                    com.lagradost.cloudstream3.flimmer.FlimmerTrakt.removeFromContinue(ep.apiName, storedData?.url, ep.parentId)
+                    resultResumeParent.isVisible = false
+                    resultResumeProgressHolder.isVisible = false
+                    resultPlayParent.isVisible = true
+                    flimmerResumeRemove.isVisible = false
+                    com.lagradost.cloudstream3.CommonActivity.showToast("Aus «Weiterschauen» entfernt", android.widget.Toast.LENGTH_SHORT)
+                }
                 resume.progress?.let { progress ->
                     resultNextSeriesButton.isVisible = false
                     resultResumeSeriesTitle.apply {

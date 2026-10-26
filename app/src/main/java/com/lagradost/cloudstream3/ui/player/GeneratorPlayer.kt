@@ -1715,7 +1715,47 @@ class GeneratorPlayer : FullScreenPlayer() {
         loadLink(nextLink.link, true)
     }
 
+    // Flimmer: Trakt jede Minute über die Position informieren (der Player meldet sie sonst nur bei Ereignissen)
+    private val flimmerTraktTicker = object : Runnable {
+        override fun run() {
+            try {
+                val pos = player.getPosition()
+                val dur = player.getDuration()
+                if (pos != null && dur != null && dur > 0 && player.getIsPlaying()) {
+                    com.lagradost.cloudstream3.flimmer.FlimmerTrakt.onProgress(currentMeta, pos, dur)
+                }
+            } catch (t: Throwable) {
+                logError(t)
+            }
+            flimmerTickHandler.postDelayed(this, 60_000L)
+        }
+    }
+    private val flimmerTickHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    override fun onResume() {
+        super.onResume()
+        flimmerTickHandler.removeCallbacks(flimmerTraktTicker)
+        flimmerTickHandler.postDelayed(flimmerTraktTicker, 60_000L)
+    }
+
+    override fun onPause() {
+        flimmerTickHandler.removeCallbacks(flimmerTraktTicker)
+        // Player verlassen oder pausiert: Position an Trakt (Pause bzw. ab 80 % gesehen)
+        try {
+            val pos = player.getPosition()
+            val dur = player.getDuration()
+            if (pos != null && dur != null && dur > 0) {
+                com.lagradost.cloudstream3.flimmer.FlimmerTrakt.onProgress(currentMeta, pos, dur)
+            }
+        } catch (t: Throwable) {
+            logError(t)
+        }
+        com.lagradost.cloudstream3.flimmer.FlimmerTrakt.onPause()
+        super.onPause()
+    }
+
     override fun onDestroy() {
+        flimmerTickHandler.removeCallbacks(flimmerTraktTicker)
         com.lagradost.cloudstream3.flimmer.FlimmerStreams.startNowListener = null
         ResultFragment.updateUI()
         currentVerifyLink?.cancel()

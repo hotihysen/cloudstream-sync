@@ -662,6 +662,26 @@
                             </LinearLayout>
                         </FrameLayout>
 
+                        <TextView
+                            android:id="@+id/flimmer_resume_remove"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="end"
+                            android:background="?attr/selectableItemBackground"
+                            android:drawablePadding="4dp"
+                            android:gravity="center_vertical"
+                            android:paddingStart="6dp"
+                            android:paddingTop="2dp"
+                            android:paddingEnd="6dp"
+                            android:paddingBottom="6dp"
+                            android:text="Aus «Weiterschauen» entfernen"
+                            android:textColor="?attr/grayTextColor"
+                            android:textSize="13sp"
+                            android:visibility="gone"
+                            app:drawableStartCompat="@drawable/ic_baseline_close_24"
+                            app:drawableTint="?attr/grayTextColor"
+                            tools:visibility="visible" />
+
                         <LinearLayout
                             android:id="@+id/result_resume_parent"
                             android:layout_width="match_parent"

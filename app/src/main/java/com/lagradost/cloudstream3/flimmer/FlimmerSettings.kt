@@ -62,6 +62,12 @@ fun flimmerTraktGroup(): Preference.PreferenceGroup {
                 },
             ),
             Preference.PreferenceItem.TextPreference(
+                title = "Letzte Meldung an Trakt",
+                subtitle = FlimmerTrakt.lastReport ?: "Noch keine in dieser Sitzung. Nach dem Schauen steht hier, ob Trakt die Meldung angenommen hat.",
+                icon = painterResource(R.drawable.ic_trakt),
+                enabled = loggedIn,
+            ),
+            Preference.PreferenceItem.TextPreference(
                 title = "Lesezeichen an Trakt senden",
                 subtitle = if (bookmarks) "An: «Später ansehen», «Am Schauen», «Abgeschlossen» usw. werden zu Trakt übertragen"
                 else "Aus",

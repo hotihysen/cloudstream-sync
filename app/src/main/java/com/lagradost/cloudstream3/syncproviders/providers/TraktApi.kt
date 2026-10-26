@@ -325,6 +325,8 @@ class TraktApi : SyncAPI() {
         /** Trakt-ID der Serie → (ausgestrahlt, gesehen), wie Trakt selbst es zählt */
         val progress: Map<Int, Progress>,
         val playback: List<PlaybackEntry>,
+        /** Im Trakt-Fortschritt ausgeblendete Serien (Trakt-IDs), z.B. aus «Weiterschauen» entfernt */
+        val hidden: Set<Int>,
         val time: Long,
     )
 
@@ -368,6 +370,14 @@ class TraktApi : SyncAPI() {
                     emptyList()
                 }
             }
+            val hid = async {
+                try {
+                    val res = get("/users/hidden/progress_watched?type=show&limit=1000", token)
+                    if (res.isSuccessful) parseJson<List<ListEntry>>(res.text).mapNotNull { it.show?.ids?.trakt }.toSet() else emptySet()
+                } catch (t: Throwable) {
+                    emptySet()
+                }
+            }
             val shows = wS.await()
             Lists(
                 watchlist = wlM.await() + wlS.await(),
@@ -377,6 +387,7 @@ class TraktApi : SyncAPI() {
                 favorites = fM.await() + fS.await(),
                 progress = progressFor(shows, token),
                 playback = pb.await(),
+                hidden = hid.await(),
                 time = System.currentTimeMillis(),
             )
         }
@@ -683,8 +694,12 @@ class TraktApi : SyncAPI() {
                 aired != null && aired > 0 -> "$count von $aired Folgen"
                 else -> "$count Folgen gesehen"
             }
-            // Neue Folgen erschienen: wieder unter «Am schauen»
-            if (done && paused == null) completed += item else watching += item
+            // Neue Folgen erschienen: wieder unter «Am schauen»; ausgeblendete Serien nur, wenn angefangen
+            when {
+                done && paused == null -> completed += item
+                paused == null && s.show?.ids?.trakt in l.hidden -> Unit
+                else -> watching += item
+            }
         }
         // Serien, deren erste Folge angefangen ist (noch keine ganz gesehen)
         for (pb in pausedEpisode) {

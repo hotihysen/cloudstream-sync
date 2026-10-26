@@ -241,6 +241,8 @@ class HomeParentItemAdapterPreview(
                             val card = callback.card
                             if (card is DataStoreHelper.ResumeWatchingResult) {
                                 DataStoreHelper.removeLastWatched(card.parentId)
+                                // Flimmer: auch bei Trakt entfernen
+                                com.lagradost.cloudstream3.flimmer.FlimmerTrakt.removeFromContinue(card.apiName, card.url, card.parentId)
                                 viewModel.reloadStored()
                             }
                         }

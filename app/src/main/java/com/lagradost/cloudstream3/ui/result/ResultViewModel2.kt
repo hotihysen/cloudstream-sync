@@ -1578,6 +1578,8 @@ class ResultViewModel2 : ViewModel() {
                 } else {
                     setVideoWatchState(click.data.id, VideoWatchState.Watched)
                 }
+                // Flimmer: auch bei Trakt ein- bzw. austragen
+                com.lagradost.cloudstream3.flimmer.FlimmerTrakt.markWatched(listOf(click.data), !isWatched)
                 // Kinda dirty to reload all episodes :(
                 reloadEpisodes()
             }
@@ -1600,6 +1602,16 @@ class ResultViewModel2 : ViewModel() {
                         markEpisodes(editor, episodeIds, watchState)
                     }
                     editor.apply()
+                    // Flimmer: auch bei Trakt ein- bzw. austragen
+                    try {
+                        val marked = seasons.flatMap { (season, ids) ->
+                            val list = if (season == clickSeason) ids.sliceArray(0 until clickEpisode.coerceAtMost(ids.size)) else ids
+                            list.mapNotNull { id -> currentEpisodes.values.flatten().firstOrNull { it.id.toString() == id } }
+                        }
+                        com.lagradost.cloudstream3.flimmer.FlimmerTrakt.markWatched(marked, watchState == VideoWatchState.Watched)
+                    } catch (t: Throwable) {
+                        logError(t)
+                    }
                     reloadEpisodes()
                 }
             }

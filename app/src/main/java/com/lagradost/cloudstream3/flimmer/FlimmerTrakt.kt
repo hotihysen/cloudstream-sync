@@ -142,7 +142,33 @@ object FlimmerTrakt {
         }
     }
 
-    /** Wird bei jedem Speichern der Wiedergabeposition aufgerufen (DataStoreHelper). */
+    /** (Sync-ID, (Staffel, Folge)) einer Folge bzw. eines Films. Katalog-Titel tragen die TMDB-ID in den Abspieldaten. */
+    private fun episodeSyncId(ep: ResultEpisode): Pair<String, Pair<Int?, Int?>>? =
+        if (FlimmerKatalog.isKatalog(ep.apiName)) {
+            try {
+                val link = parseJson<FlimmerKatalog.LinkData>(ep.data)
+                "${if (link.isTv) "show" else "movie"}:tmdb:${link.tmdbId}" to (link.season to link.episode)
+            } catch (t: Throwable) {
+                null
+            }
+        } else {
+            knownIds[ep.parentId]?.let { it to (ep.season to ep.episode) }
+        }
+
+    /** Sync-ID eines Titels aus «Weiterschauen» (Katalog-URL enthält die TMDB-ID). */
+    private fun titleSyncId(apiName: String?, url: String?, parentId: Int?): String? {
+        if (FlimmerKatalog.isKatalog(apiName) && url != null) {
+            val m = Regex("""/(tv|movie)/(\d+)""").find(url) ?: return null
+            return "${if (m.groupValues[1] == "tv") "show" else "movie"}:tmdb:${m.groupValues[2]}"
+        }
+        return parentId?.let { knownIds[it] }
+    }
+
+    /** Letzte Meldung an Trakt, zur Kontrolle in den Einstellungen */
+    @Volatile var lastReport: String? = null
+        private set
+
+    /** Wird bei jedem Speichern der Wiedergabeposition aufgerufen (DataStoreHelper) und jede Minute vom Player. */
     fun onProgress(meta: Any?, position: Long, duration: Long) {
         if (!isConfigured || !scrobbleEnabled || !isLoggedIn() || duration <= 0) return
         val ep = meta as? ResultEpisode ?: return
@@ -151,20 +177,12 @@ object FlimmerTrakt {
         var a = active
         if (a == null || a.id != ep.id) {
             a?.let { old -> if (old.started && !old.stopped) send("pause", old.body(old.lastProgress)) }
-            // Katalog-Titel tragen ihre TMDB-ID direkt in den Abspieldaten
-            val syncId = if (FlimmerKatalog.isKatalog(ep.apiName)) {
-                try {
-                    val link = parseJson<FlimmerKatalog.LinkData>(ep.data)
-                    "${if (link.isTv) "show" else "movie"}:tmdb:${link.tmdbId}" to (link.season to link.episode)
-                } catch (t: Throwable) {
-                    null
-                }
-            } else {
-                knownIds[ep.parentId]?.let { it to (ep.season to ep.episode) }
-            } ?: return
+            val syncId = episodeSyncId(ep) ?: return
             val body = scrobbleBody(syncId.first, syncId.second.first, syncId.second.second) ?: return
             a = Active(ep.id, body, syncId.first)
             active = a
+            // Serie war aus «Weiterschauen» entfernt (bei Trakt ausgeblendet): wieder einblenden
+            if (syncId.first.startsWith("show:")) unhideProgress(syncId.first)
         }
         a.lastProgress = progress
         if (!a.started && progress < 80.0) {
@@ -191,22 +209,159 @@ object FlimmerTrakt {
     /** App geht in den Hintergrund oder Player wird verlassen. */
     fun onPause() {
         val a = active ?: return
-        if (a.started && !a.stopped) send("pause", a.body(a.lastProgress))
         active = null
+        if (a.stopped) return
+        when {
+            a.lastProgress >= 80.0 -> send("stop", a.body(a.lastProgress))
+            a.lastProgress >= 1.0 -> send("pause", a.body(a.lastProgress))
+        }
     }
 
     private fun send(action: String, body: String, then: (suspend () -> Unit)? = null) {
         scope.launch {
+            val time = java.text.SimpleDateFormat("HH:mm", java.util.Locale.GERMAN).format(java.util.Date())
+            val label = when (action) { "start" -> "Start"; "pause" -> "Pause (Fortschritt gespeichert)"; else -> "Stopp (gesehen)" }
             try {
-                val t = token() ?: return@launch
+                val t = token() ?: run {
+                    lastReport = "$time · $label: nicht angemeldet oder Anmeldung abgelaufen"
+                    return@launch
+                }
                 val res = com.lagradost.cloudstream3.app.post(
                     "$API/scrobble/$action", headers = headers(t), requestBody = body.toRequestBody(JSON)
                 )
-                if (!res.isSuccessful && res.code != 409) Log.w(TAG, "scrobble/$action ${res.code}")
+                lastReport = "$time · $label: " + when {
+                    res.isSuccessful -> "OK"
+                    res.code == 409 -> "schon gemeldet"
+                    res.code == 404 -> "Titel bei Trakt nicht gefunden"
+                    res.code == 401 -> "Anmeldung abgelaufen, bitte neu anmelden"
+                    else -> "Fehler ${res.code}"
+                }
+                if (!res.isSuccessful && res.code != 409) {
+                    Log.w(TAG, "scrobble/$action ${res.code}")
+                    // Gesehen trotzdem eintragen
+                    if (action == "stop") addHistoryFromScrobble(body, t)
+                }
                 if (action == "stop" || action == "pause") AccountManager.traktApi.requireLibraryRefresh = true
                 then?.invoke()
             } catch (t: Throwable) {
+                lastReport = "$time · $label: keine Verbindung"
                 Log.w(TAG, "scrobble/$action", t)
+            }
+        }
+    }
+
+    private suspend fun post(path: String, body: String, token: String) =
+        com.lagradost.cloudstream3.app.post("$API$path", headers = headers(token), requestBody = body.toRequestBody(JSON))
+
+    /** Scrobble-Daten in einen Verlaufseintrag umwandeln (falls «stop» scheitert) */
+    private suspend fun addHistoryFromScrobble(body: String, token: String) {
+        try {
+            val m = parseJson<Map<String, Any?>>(body)
+            val history = if (m["show"] != null) {
+                val ep = m["episode"] as? Map<*, *> ?: return
+                mapOf("shows" to listOf(mapOf(
+                    "ids" to (m["show"] as Map<*, *>)["ids"],
+                    "seasons" to listOf(mapOf("number" to ep["season"], "episodes" to listOf(mapOf("number" to ep["number"]))))
+                )))
+            } else {
+                mapOf("movies" to listOf(mapOf("ids" to (m["movie"] as? Map<*, *>)?.get("ids"))))
+            }
+            post("/sync/history", history.toJson(), token)
+        } catch (t: Throwable) {
+            Log.w(TAG, "history fallback", t)
+        }
+    }
+
+    // ------------------------------------------------------------------ Gesehen-Markierungen → Trakt
+
+    /** Folgen in Flimmer als gesehen / nicht gesehen markiert: bei Trakt im Verlauf ein- bzw. austragen. */
+    fun markWatched(episodes: List<ResultEpisode>, watched: Boolean) {
+        if (!isConfigured || !isLoggedIn() || episodes.isEmpty()) return
+        scope.launch {
+            try {
+                val t = token() ?: return@launch
+                val shows = HashMap<String, MutableMap<Int, MutableList<Int>>>()
+                val movies = mutableListOf<String>()
+                for (ep in episodes) {
+                    val (id, se) = episodeSyncId(ep) ?: continue
+                    if (id.startsWith("movie:")) {
+                        movies += id
+                    } else {
+                        val season = se.first ?: continue
+                        val number = se.second ?: continue
+                        shows.getOrPut(id) { HashMap() }.getOrPut(season) { mutableListOf() } += number
+                    }
+                }
+                val body = mapOf(
+                    "movies" to movies.distinct().mapNotNull { TraktApi.Companion.TraktId.parse(it)?.let { tid -> mapOf("ids" to tid.ids()) } },
+                    "shows" to shows.mapNotNull { (id, seasons) ->
+                        val tid = TraktApi.Companion.TraktId.parse(id) ?: return@mapNotNull null
+                        mapOf("ids" to tid.ids(), "seasons" to seasons.map { (n, eps) ->
+                            mapOf("number" to n, "episodes" to eps.distinct().map { mapOf("number" to it) })
+                        })
+                    },
+                ).toJson()
+                val res = post(if (watched) "/sync/history" else "/sync/history/remove", body, t)
+                val time = java.text.SimpleDateFormat("HH:mm", java.util.Locale.GERMAN).format(java.util.Date())
+                lastReport = "$time · ${episodes.size} als ${if (watched) "gesehen" else "nicht gesehen"} markiert: " +
+                        if (res.isSuccessful) "OK" else "Fehler ${res.code}"
+                AccountManager.traktApi.requireLibraryRefresh = true
+            } catch (e: Throwable) {
+                Log.w(TAG, "markWatched", e)
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ Aus «Weiterschauen» entfernen
+
+    @kotlinx.serialization.Serializable
+    data class PlaybackItem(
+        @com.fasterxml.jackson.annotation.JsonProperty("id") @kotlinx.serialization.SerialName("id") val id: Long = 0,
+        @com.fasterxml.jackson.annotation.JsonProperty("movie") @kotlinx.serialization.SerialName("movie") val movie: TraktApi.Media? = null,
+        @com.fasterxml.jackson.annotation.JsonProperty("show") @kotlinx.serialization.SerialName("show") val show: TraktApi.Media? = null,
+    )
+
+    /**
+     * Titel aus «Weiterschauen» entfernt: bei Trakt die gespeicherte Position löschen und die Serie
+     * im Trakt-Fortschritt ausblenden. Wird die Serie wieder geschaut, blendet Flimmer sie wieder ein.
+     */
+    fun removeFromContinue(apiName: String?, url: String?, parentId: Int?) {
+        if (!isConfigured || !isLoggedIn()) return
+        val syncId = titleSyncId(apiName, url, parentId) ?: return
+        val tid = TraktApi.Companion.TraktId.parse(syncId) ?: return
+        scope.launch {
+            try {
+                val t = token() ?: return@launch
+                val res = com.lagradost.cloudstream3.app.get("$API/sync/playback?limit=100", headers = headers(t))
+                if (res.isSuccessful) {
+                    parseJson<List<PlaybackItem>>(res.text)
+                        .filter { pb -> if (tid.isShow) tid.matches(pb.show?.ids) else (pb.show == null && tid.matches(pb.movie?.ids)) }
+                        .forEach { pb ->
+                            com.lagradost.cloudstream3.app.delete("$API/sync/playback/${pb.id}", headers = headers(t))
+                        }
+                }
+                if (tid.isShow) {
+                    post("/users/hidden/progress_watched", mapOf("shows" to listOf(mapOf("ids" to tid.ids()))).toJson(), t)
+                }
+                val time = java.text.SimpleDateFormat("HH:mm", java.util.Locale.GERMAN).format(java.util.Date())
+                lastReport = "$time · Aus «Weiterschauen» entfernt (auch bei Trakt)"
+                AccountManager.traktApi.requireLibraryRefresh = true
+            } catch (e: Throwable) {
+                Log.w(TAG, "removeFromContinue", e)
+            }
+        }
+    }
+
+    private val unhidden = java.util.Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
+
+    private fun unhideProgress(syncId: String) {
+        if (!unhidden.add(syncId)) return
+        val tid = TraktApi.Companion.TraktId.parse(syncId) ?: return
+        scope.launch {
+            try {
+                val t = token() ?: return@launch
+                post("/users/hidden/progress_watched/remove", mapOf("shows" to listOf(mapOf("ids" to tid.ids()))).toJson(), t)
+            } catch (_: Throwable) {
             }
         }
     }
