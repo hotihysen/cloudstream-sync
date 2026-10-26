@@ -149,13 +149,17 @@ jobs:
           sleep 2
           (timeout 300 ./gradlew :desktopApp:run --no-daemon --console=plain > run.log 2>&1 &)
           mkdir -p shots
-          for t in 60 120 180; do sleep 60; import -window root shots/start-$t.png; done
-          # Klick auf den ersten Titel der ersten Reihe (Detailseite)
+          for t in 60 120; do sleep 60; import -window root shots/start-$t.png; done
           WID=$(xdotool search --name "^Flimmer$" | head -1); echo "Fenster: $WID"
-          xdotool getwindowgeometry $WID || true
-          xdotool mousemove --window $WID 200 720 click 1; sleep 15; import -window root shots/detail.png
+          # Hero: «Weitere Infos»
+          xdotool mousemove --window $WID 300 480; sleep 1; xdotool click 1; sleep 15; import -window root shots/detail-hero.png
+          for i in $(seq 1 12); do xdotool click 5; sleep 0.2; done; sleep 4; import -window root shots/detail-folgen.png
+          xdotool key Escape; sleep 4
+          # Erste Kachel der ersten Reihe
+          xdotool mousemove --window $WID 120 730; sleep 1; xdotool mousedown 1; sleep 0.15; xdotool mouseup 1; sleep 15; import -window root shots/detail-kachel.png
           xdotool key Escape; sleep 3
-          xdotool mousemove --window $WID 1345 34 click 1; sleep 8; import -window root shots/einstellungen.png
+          xdotool mousemove --window $WID 1210 34; sleep 1; xdotool click 1; sleep 10; import -window root shots/suche.png
+          xdotool type --delay 80 "dark"; sleep 8; import -window root shots/suche-dark.png
           tail -60 run.log | awk '{printf "%s%%0A", $0}' | sed 's/^/::notice::Log%0A/'; echo
       - name: Fotos hochladen
         if: always()

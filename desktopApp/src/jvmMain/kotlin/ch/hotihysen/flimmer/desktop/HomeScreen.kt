@@ -157,7 +157,7 @@ private fun Hero(load: LoadResponse?, nav: Nav) {
                 Bar {
                     FlimmerButton("▶  Abspielen", primary = true) { nav.playDefault(load) }
                     Gap(w = 12)
-                    FlimmerButton("ⓘ  Weitere Infos") { nav.go(Screen.Detail(load.apiName, load.url)) }
+                    FlimmerButton("Weitere Infos") { nav.go(Screen.Detail(load.apiName, load.url)) }
                 }
             }
         }
