@@ -33,8 +33,8 @@ class PageAdapter(
     private val coverHeight: Int get() = (resView.itemWidth / 0.68).roundToInt()
 
     override fun onCreateContent(parent: ViewGroup): ViewHolderState<Any> {
-        // Flimmer: eigene Kachel auf dem Handy
-        if (isLayout(PHONE)) {
+        // Flimmer: eigene Kachel (Handy und Fernseher)
+        if (true) {
             return ViewHolderState(FlimmerLibraryCardBinding.inflate(LayoutInflater.from(parent.context), parent, false))
         }
         return ViewHolderState(

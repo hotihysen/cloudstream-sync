@@ -338,6 +338,15 @@ class TraktApi : SyncAPI() {
         requireLibraryRefresh = true
     }
 
+    /** Beim nächsten Fortschritt-Abruf den Tages-Zwischenspeicher ignorieren */
+    @Volatile private var skipProgressCache = false
+
+    /** Flimmer: «Jetzt synchronisieren», alles frisch von Trakt holen */
+    fun forceRefresh() {
+        skipProgressCache = true
+        invalidate()
+    }
+
     private suspend fun fetchList(path: String, token: String): List<ListEntry> {
         val res = get(path, token)
         if (!res.isSuccessful) {
@@ -392,6 +401,7 @@ class TraktApi : SyncAPI() {
             )
         }
         cache = token to l
+        skipProgressCache = false
         l
     }
 
@@ -413,7 +423,7 @@ class TraktApi : SyncAPI() {
             async {
                 val cached = com.lagradost.cloudstream3.CloudStreamApp.getKey<String>(progressFolder, id.toString())
                     ?.split("|", limit = 3)
-                if (cached != null && cached.size == 3 && cached[0] == stamp &&
+                if (!skipProgressCache && cached != null && cached.size == 3 && cached[0] == stamp &&
                     now - (cached[1].toLongOrNull() ?: 0L) < 24 * 3600_000L
                 ) {
                     try {

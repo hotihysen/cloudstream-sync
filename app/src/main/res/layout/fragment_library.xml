@@ -55,6 +55,18 @@
                 app:tint="?attr/textColor"
                 tools:visibility="visible" />
 
+            <!-- Flimmer: Trakt jetzt synchronisieren -->
+            <ImageView
+                android:id="@+id/flimmer_library_sync"
+                android:layout_width="40dp"
+                android:layout_height="45dp"
+                android:layout_gravity="end|center_vertical"
+                android:background="?selectableItemBackgroundBorderless"
+                android:contentDescription="Jetzt synchronisieren"
+                android:padding="8dp"
+                android:src="@drawable/ic_refresh"
+                app:tint="?attr/textColor" />
+
             <FrameLayout
                 android:layout_width="match_parent"
                 android:layout_height="40dp"

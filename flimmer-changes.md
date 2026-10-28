@@ -1,5 +1,9 @@
-Flimmer 17.4
+Flimmer 17.5
 
-Quellensuche
-- Andere Staffel-Zählung ausgeglichen: Zählt eine Seite die Staffeln anders als TMDB (z.B. Lupin: bei TMDB 3 Staffeln, bei Netflix und den Seiten 4 «Teile»), ordnet Flimmer die Folge über ihre fortlaufende Nummer zu. Lupin Staffel 3, Folge 1 spielt so bei der Seite Staffel 4, Folge 1 (Teil 4)
-- Hat eine Seite die Folge noch nicht, erscheint «Folge fehlt», statt eine falsche Folge abzuspielen
+Fernseher
+- Bibliothek mit den neuen Kacheln (Typ, Bewertung, Fortschritt, «Als Nächstes: S2 · F5») und dem Filter Alles, Serien, Filme, Anime
+- Mit der Fernbedienung: von den Reitern nach unten zum Filter, von dort zu den Kacheln
+
+Trakt jetzt synchronisieren
+- In der Bibliothek oben das Symbol mit dem Kreispfeil: holt Trakt-Listen und Fortschritt sofort frisch (und den Weiterschauen-Stand der anderen Geräte)
+- Auch unter Einstellungen, Trakt-Optionen, «Jetzt synchronisieren»

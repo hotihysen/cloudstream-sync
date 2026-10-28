@@ -134,6 +134,17 @@ class LibraryFragment : BaseFragment<FragmentLibraryBinding>(
         binding: FragmentLibraryBinding,
         savedInstanceState: Bundle?
     ) {
+        // Flimmer: Trakt (und den Gerätesync) sofort neu holen
+        binding.flimmerLibrarySync.setOnClickListener { v ->
+            v.animate().rotationBy(360f).setDuration(600).start()
+            com.lagradost.cloudstream3.syncproviders.AccountManager.traktApi.forceRefresh()
+            com.lagradost.cloudstream3.CommonActivity.showToast("Wird synchronisiert …", android.widget.Toast.LENGTH_SHORT)
+            com.lagradost.cloudstream3.utils.Coroutines.ioSafe {
+                com.lagradost.cloudstream3.utils.CloudSync.pull(notify = true, force = true)
+            }
+            libraryViewModel.reloadPages(true)
+        }
+
         // Flimmer: Filter nach Typ (Serien, Filme, Anime)
         listOf(
             binding.flimmerFilterAll to 0, binding.flimmerFilterSeries to 1,
@@ -458,7 +469,8 @@ class LibraryFragment : BaseFragment<FragmentLibraryBinding>(
                                 if (p.items.isNotEmpty()) "$title  ${p.items.size}" else title
                             }
                             tab.view.tag = "tv_no_focus_tag"
-                            tab.view.nextFocusDownId = R.id.search_result_root
+                            tab.view.nextFocusDownId =
+                                if (isLayout(PHONE)) R.id.search_result_root else R.id.flimmer_filter_all
 
                             tab.view.setOnClickListener {
                                 val currentItem = binding.viewpager.currentItem

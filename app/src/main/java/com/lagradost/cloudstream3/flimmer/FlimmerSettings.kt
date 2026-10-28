@@ -62,6 +62,27 @@ fun flimmerTraktGroup(): Preference.PreferenceGroup {
                 },
             ),
             Preference.PreferenceItem.TextPreference(
+                title = "Jetzt synchronisieren",
+                subtitle = "Trakt-Listen und Fortschritt sofort neu holen (sonst automatisch beim Öffnen der Bibliothek)",
+                icon = painterResource(R.drawable.ic_refresh),
+                enabled = loggedIn,
+                onClick = {
+                    AccountManager.traktApi.forceRefresh()
+                    com.lagradost.cloudstream3.CommonActivity.showToast("Trakt wird synchronisiert …", android.widget.Toast.LENGTH_SHORT)
+                    com.lagradost.cloudstream3.utils.Coroutines.ioSafe {
+                        val repo = AccountManager.syncApis.firstOrNull { it.idPrefix == AccountManager.traktApi.idPrefix }
+                        val ok = repo?.library()?.isSuccess == true
+                        AccountManager.traktApi.requireLibraryRefresh = true
+                        com.lagradost.cloudstream3.utils.Coroutines.runOnMainThread {
+                            com.lagradost.cloudstream3.CommonActivity.showToast(
+                                if (ok) "Trakt ist auf dem neusten Stand" else "Trakt nicht erreichbar",
+                                android.widget.Toast.LENGTH_SHORT
+                            )
+                        }
+                    }
+                },
+            ),
+            Preference.PreferenceItem.TextPreference(
                 title = "Letzte Meldung an Trakt",
                 subtitle = FlimmerTrakt.lastReport ?: "Noch keine in dieser Sitzung. Nach dem Schauen steht hier, ob Trakt die Meldung angenommen hat.",
                 icon = painterResource(R.drawable.ic_trakt),
