@@ -379,6 +379,8 @@ class FlimmerKatalog(private val mode: Mode = Mode.ALL) : MainAPI() {
         @JsonProperty("imdb") @SerialName("imdb") val imdbId: String? = null,
         /** Weitere Titel für die Suche: englisch, Original in lateinischer Schrift, Alternativtitel */
         @JsonProperty("alt") @SerialName("alt") val altTitles: List<String> = emptyList(),
+        /** Folgen pro Staffel bei TMDB (Index 0 = Staffel 1), um andere Zählweisen der Seiten auszugleichen */
+        @JsonProperty("sc") @SerialName("sc") val seasonCounts: List<Int> = emptyList(),
     )
 
     // ------------------------------------------------------------------ TMDB-Zugriff
@@ -611,6 +613,9 @@ class FlimmerKatalog(private val mode: Mode = Mode.ALL) : MainAPI() {
         }
 
         val episodes = mutableListOf<Episode>()
+        // Folgen pro Staffel, z.B. Lupin bei TMDB [10, 7, 8], bei Netflix und den Seiten [5, 5, 7, 8]
+        val maxSeason = d.seasons.maxOfOrNull { it.seasonNumber } ?: 0
+        val seasonCounts = (1..maxSeason).map { n -> d.seasons.firstOrNull { it.seasonNumber == n }?.episodeCount ?: 0 }
         for (s in d.seasons.filter { it.seasonNumber > 0 && it.episodeCount > 0 }) {
             val season = try {
                 parseJson<TmdbSeason>(tmdb("tv/$id/season/${s.seasonNumber}"))
@@ -619,7 +624,7 @@ class FlimmerKatalog(private val mode: Mode = Mode.ALL) : MainAPI() {
                 continue
             }
             for (e in season.episodes) {
-                val link = LinkData(id, true, title, original, year, e.seasonNumber, e.episodeNumber, imdb, alt)
+                val link = LinkData(id, true, title, original, year, e.seasonNumber, e.episodeNumber, imdb, alt, seasonCounts)
                 episodes += newEpisode(link.toJson()) {
                     name = e.name
                     this.season = e.seasonNumber
@@ -811,6 +816,14 @@ class FlimmerKatalog(private val mode: Mode = Mode.ALL) : MainAPI() {
         val s = d.season ?: return null
         val e = d.episode ?: return null
         for (eps in lists) {
+            if (!seasonEntry) {
+                // Andere Staffel-Zählung als TMDB (z.B. Netflix-«Teile»): über die fortlaufende Nummer zuordnen
+                val mapped = mapByAbsolute(eps, d, s, e)
+                if (mapped != null) {
+                    if (mapped.isNotEmpty()) return mapped
+                    continue // Seite hat die Folge (noch) nicht
+                }
+            }
             if (seasonEntry) {
                 // Eigener Eintrag pro Staffel: Folgen sind dort meist ab 1 nummeriert
                 eps.firstOrNull { (it.season == null || it.season == 1 || it.season == s) && it.episode == e }
@@ -822,6 +835,26 @@ class FlimmerKatalog(private val mode: Mode = Mode.ALL) : MainAPI() {
             if (s == 1) eps.firstOrNull { it.season == null && it.episode == e }?.let { return it.data }
         }
         return null
+    }
+
+    /**
+     * Gleicht unterschiedliche Staffel-Zählungen aus. Stimmt die Aufteilung der Seite bis zur gesuchten
+     * Folge mit TMDB überein, null (normale Zuordnung). Sonst die Daten der Folge mit derselben
+     * fortlaufenden Nummer, oder "" wenn die Seite so viele Folgen nicht hat.
+     */
+    private fun mapByAbsolute(eps: List<Episode>, d: LinkData, s: Int, e: Int): String? {
+        val counts = d.seasonCounts
+        if (counts.isEmpty() || eps.none { it.season != null }) return null
+        val regular = eps.filter { (it.season ?: 1) > 0 }
+            .sortedWith(compareBy({ it.season ?: 1 }, { it.episode ?: 0 }))
+        val perSeason = regular.groupingBy { it.season ?: 1 }.eachCount()
+        // Fehlen der Seite frühere Staffeln ganz, lässt sich nicht durchzählen: normale Zuordnung
+        if ((1 until s).any { perSeason[it] == null }) return null
+        val sameStructure = (1 until s).all { i -> perSeason[i] == counts.getOrNull(i - 1) } &&
+                (perSeason[s] ?: 0) >= e
+        if (sameStructure) return null
+        val absolute = counts.take(s - 1).sum() + e
+        return regular.getOrNull(absolute - 1)?.data ?: ""
     }
 
     private fun buildReport(d: LinkData, report: Map<String, String>): String {

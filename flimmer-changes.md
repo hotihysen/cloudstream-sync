@@ -1,11 +1,5 @@
-Flimmer 17.3
+Flimmer 17.4
 
-Weiterschauen
-- Auf der Detailseite: «Aus «Weiterschauen» entfernen» (unter dem Weiterschauen-Knopf)
-- Entfernen (Detailseite oder lange auf die Kachel drücken, «Entfernen») löscht auch bei Trakt die gespeicherte Position und blendet die Serie im Trakt-Fortschritt aus; schaust du sie wieder, erscheint sie automatisch wieder
-
-Trakt
-- Fortschritt kommt jetzt zuverlässig bei Trakt an: Der Player meldet die Position jede Minute und beim Verlassen des Players (vorher nur beim Wechsel in den Hintergrund)
-- Wer den Player ab 80 % verlässt, bekommt die Folge bei Trakt als gesehen eingetragen; klappt die Meldung nicht, trägt Flimmer sie direkt in den Verlauf ein
-- In Flimmer als gesehen markierte Folgen (auch «bis hier gesehen») werden bei Trakt eingetragen, Entmarkieren entfernt sie wieder
-- Einstellungen, Trakt-Optionen: «Letzte Meldung an Trakt» zeigt, ob Trakt die Meldung angenommen hat
+Quellensuche
+- Andere Staffel-Zählung ausgeglichen: Zählt eine Seite die Staffeln anders als TMDB (z.B. Lupin: bei TMDB 3 Staffeln, bei Netflix und den Seiten 4 «Teile»), ordnet Flimmer die Folge über ihre fortlaufende Nummer zu. Lupin Staffel 3, Folge 1 spielt so bei der Seite Staffel 4, Folge 1 (Teil 4)
+- Hat eine Seite die Folge noch nicht, erscheint «Folge fehlt», statt eine falsche Folge abzuspielen
