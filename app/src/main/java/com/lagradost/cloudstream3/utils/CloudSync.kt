@@ -82,6 +82,14 @@ object CloudSync {
     private const val T_SUBSCRIPTION = "sub" // Abos (neue Folgen)
     private const val T_PROFILES = "prof"  // Profile mit Namen, Bild und PIN (für alle Profile gemeinsam)
     private const val PROFILES_KEY = "$T_PROFILES/0"
+    private const val T_REPOS = "repo"     // Repos (für alle Profile gemeinsam)
+    private const val T_PLUGINS = "plug"   // installierte Erweiterungen (gemeinsam)
+    private const val T_SETTINGS = "set"   // wichtige Einstellungen (gemeinsam)
+    private const val REPOS_KEY = "$T_REPOS/0"
+    private const val PLUGINS_KEY = "$T_PLUGINS/0"
+    private const val SETTINGS_KEY = "$T_SETTINGS/0"
+    /** Einträge, die nicht zu einem Profil gehören und aus allen Profil-Dateien gelesen werden */
+    private val GLOBAL_KEYS = setOf(PROFILES_KEY, REPOS_KEY, PLUGINS_KEY, SETTINGS_KEY)
 
     @Serializable
     data class Record(
@@ -255,6 +263,9 @@ object CloudSync {
             T_FAVORITE -> "$acc/$RESULT_FAVORITES_STATE_DATA/$id"
             T_SUBSCRIPTION -> "$acc/$RESULT_SUBSCRIBED_STATE_DATA/$id"
             T_PROFILES -> DataStoreHelper.PROFILES_STORAGE_KEY
+            T_REPOS -> DeviceSetupSync.PATH_REPOS
+            T_PLUGINS -> DeviceSetupSync.PATH_PLUGINS
+            T_SETTINGS -> DeviceSetupSync.PATH_SETTINGS
             else -> null
         }
     }
@@ -269,6 +280,9 @@ object CloudSync {
     fun onFavorite(id: Int?) = markDirty(T_FAVORITE, id)
     fun onSubscription(id: Int?) = markDirty(T_SUBSCRIPTION, id)
     fun onProfiles() = markDirty(T_PROFILES, 0)
+    fun onRepos() = markDirty(T_REPOS, 0)
+    fun onPlugins() = markDirty(T_PLUGINS, 0)
+    fun onSettings() = markDirty(T_SETTINGS, 0)
     fun onWatchState(id: Int?) = markDirty(T_WATCH, id)
     fun onResume(parentId: Int?) {
         markDirty(T_RESUME, parentId)
@@ -400,6 +414,7 @@ object CloudSync {
                 } ?: throw IllegalStateException("Zeitüberschreitung")
 
                 val applied = applyRecords(ctx, records)
+                if (DeviceSetupSync.pendingPlugins != null) scope.launch { DeviceSetupSync.installMissingPlugins() }
                 newSeq?.let { setLastSeq(ctx, it) }
                 setStatus(ctx, null)
 
@@ -444,6 +459,18 @@ object CloudSync {
                     // Profile nie löschen, nur ergänzen bzw. aktualisieren
                     val plain = r.v?.let { v -> ProfileCrypt.reveal(v, cryptKey(ctx)) } ?: continue
                     DataStoreHelper.mergeSyncedProfiles(plain)
+                    times.putLong(TIME_PREFIX + r.k, r.t)
+                    applied++
+                    continue
+                }
+                // Geräte-Einrichtung: ergänzen statt ersetzen
+                if (r.k == REPOS_KEY || r.k == PLUGINS_KEY || r.k == SETTINGS_KEY) {
+                    val v = r.v
+                    if (v != null) when (r.k) {
+                        REPOS_KEY -> DeviceSetupSync.applyRepos(v)
+                        PLUGINS_KEY -> DeviceSetupSync.pendingPlugins = v
+                        SETTINGS_KEY -> DeviceSetupSync.applySettings(ctx, v)
+                    }
                     times.putLong(TIME_PREFIX + r.k, r.t)
                     applied++
                     continue
@@ -582,7 +609,7 @@ object CloudSync {
                 continue
             }
             for (r in device.records.values) {
-                if (otherProfile && r.k != PROFILES_KEY) continue
+                if (otherProfile && r.k !in GLOBAL_KEYS) continue
                 val cur = newest[r.k]
                 if (cur == null || r.t > cur.t) newest[r.k] = r
             }
@@ -602,7 +629,8 @@ object CloudSync {
         foregroundJob = scope.launch {
             // Flimmer 17.6: Lesezeichen und Profile einmalig hochladen
             context?.let { ctx ->
-                val flag = "full_v2_${DataStoreHelper.currentAccount}"
+                DeviceSetupSync.startListening(ctx)
+                val flag = "full_v3_${DataStoreHelper.currentAccount}"
                 if (!prefs(ctx).getBoolean(flag, false)) {
                     if (fullSync() != null) prefs(ctx).edit { putBoolean(flag, true) }
                 }
@@ -644,6 +672,12 @@ object CloudSync {
         collect("$acc/$RESULT_FAVORITES_STATE_DATA", T_FAVORITE)
         collect("$acc/$RESULT_SUBSCRIBED_STATE_DATA", T_SUBSCRIPTION)
         if (all.contains(DataStoreHelper.PROFILES_STORAGE_KEY)) keys.add(PROFILES_KEY)
+        // Geräte-Einrichtung: Momentaufnahmen erstellen und mitschicken
+        DeviceSetupSync.snapshotSettings(ctx)
+        DeviceSetupSync.snapshotPlugins(ctx)
+        keys.add(SETTINGS_KEY)
+        keys.add(PLUGINS_KEY)
+        if (all.contains(DeviceSetupSync.PATH_REPOS)) keys.add(REPOS_KEY)
         // Kacheln nur für Titel, die auch in «Weiterschauen» stehen
         keys.filter { it.startsWith("$T_RESUME/") }
             .forEach { keys.add(T_HEADER + "/" + it.substringAfter('/')) }
@@ -660,6 +694,25 @@ object CloudSync {
         }
         if (!push()) return null
         return pull(notify = true, force = true)
+    }
+
+    data class RestoreResult(val entries: Int, val plugins: Int, val error: String?)
+
+    /**
+     * Alles von den anderen Geräten übernehmen: Profile, Repos, Erweiterungen, Einstellungen sowie
+     * Weiterschauen und Merklisten des aktuellen Profils. Lokales bleibt erhalten und wird ergänzt.
+     */
+    suspend fun restoreFromOtherDevices(): RestoreResult {
+        val ctx = context ?: return RestoreResult(0, 0, "Kein Kontext")
+        if (!isEnabled(ctx)) return RestoreResult(0, 0, "Sync ist nicht eingeschaltet oder der Token fehlt")
+        testConnection()?.let { return RestoreResult(0, 0, it) }
+        val n = pull(notify = true, force = true) ?: return RestoreResult(0, 0, prefs(ctx).getString(KEY_LAST_ERROR, null) ?: "Fehler")
+        val plugins = DeviceSetupSync.installMissingPlugins()
+        // Danach den eigenen Stand hochladen
+        DeviceSetupSync.startListening(ctx)
+        fullSync()
+        prefs(ctx).edit { putBoolean("full_v3_${DataStoreHelper.currentAccount}", true) }
+        return RestoreResult(n, plugins, null)
     }
 
     /** Verbindung prüfen; liefert null bei Erfolg, sonst eine Fehlermeldung. */

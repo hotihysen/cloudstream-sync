@@ -1,10 +1,11 @@
-Flimmer 17.6
+Flimmer 17.7
 
-Profile über den Gist-Sync
-- Profile (Name, Bild, PIN) werden zwischen Handy, Fernseher und weiteren Geräten abgeglichen. Neue Profile erscheinen auf allen Geräten; gelöscht wird über den Sync nie (ein Profil auf jedem Gerät selbst löschen)
-- Die PIN steht verschlüsselt im Gist
-- Pro Profil werden jetzt auch abgeglichen: Lesezeichen (Geplant, Am Schauen, Abgeschlossen, …), Favoriten und Abos, zusätzlich zu Weiterschauen und Gesehen-Markierungen
-- Beim ersten Start dieser Version lädt jedes Gerät seine vorhandenen Lesezeichen und Profile einmal hoch
+Neues Gerät in einem Schritt einrichten
+- Beim ersten Start: «Von einem anderen Gerät übernehmen». Gist-Token eingeben, Flimmer holt Profile mit PIN, Repos, Erweiterungen (werden gleich installiert), wichtige Einstellungen sowie Weiterschauen und Merklisten
+- Für bestehende Geräte: Einstellungen, Allgemein, Cloud-Sync, «Alles von anderen Geräten übernehmen»
 
-Trakt pro Profil
-- Jedes Profil kann ein eigenes Trakt-Konto haben (Einstellungen, Trakt-Optionen zeigt, für welches Profil sie gelten). Die Trakt-Anmeldung bleibt pro Gerät
+Laufender Abgleich
+- Neue Repos und installierte Erweiterungen erscheinen auch auf den anderen Geräten (entfernt wird über den Sync nichts)
+- Wichtige Einstellungen gehen mit: Sprache, Design und Farbe, Startseite-Anzeige, Player (Doppeltippen, Spulzeit, Autoplay, Qualität), Untertitel-Stil und -Sprache, Stream-Sprache, Trakt-Optionen
+- Gerätespezifisches bleibt auf dem Gerät: Layout Handy/TV, Download-Ordner, Helligkeit, Puffer, Akku
+- Die Trakt-Anmeldung wird nicht übertragen (pro Profil und Gerät einmal anmelden)

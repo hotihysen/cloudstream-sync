@@ -133,8 +133,8 @@ object SettingsGeneralScreen : SearchableSettings {
             title = "Cloud-Sync",
             preferenceItems = persistentListOf(
                 Preference.PreferenceItem.SwitchPreference(
-                    title = "Fortschritt synchronisieren",
-                    subtitle = "Position und «Weiterschauen» mit deinen anderen Geräten abgleichen",
+                    title = "Mit anderen Geräten synchronisieren",
+                    subtitle = "Weiterschauen, Merklisten, Profile, Repos, Erweiterungen und wichtige Einstellungen abgleichen",
                     icon = painterResource(R.drawable.baseline_sync_24),
                     preference = settings.sync.enabled,
                     onValueChanged = { on ->
@@ -187,6 +187,24 @@ object SettingsGeneralScreen : SearchableSettings {
                             val err = CloudSync.testConnection()
                             syncBusy = false
                             showToast(if (err == null) "Verbindung OK" else "Verbindung fehlgeschlagen: $err")
+                        }
+                    },
+                ),
+                Preference.PreferenceItem.TextPreference(
+                    title = "Alles von anderen Geräten übernehmen",
+                    subtitle = if (syncBusy) "Läuft …" else "Profile, Repos, Erweiterungen und Einstellungen der anderen Geräte holen und ergänzen",
+                    icon = painterResource(R.drawable.ic_baseline_extension_24),
+                    enabled = syncEnabled && !syncBusy,
+                    onClick = {
+                        syncScope.launch(Dispatchers.IO) {
+                            syncBusy = true
+                            val r = CloudSync.restoreFromOtherDevices()
+                            syncStatus = CloudSync.statusText(context)
+                            syncBusy = false
+                            showToast(
+                                r.error?.let { "Übernehmen fehlgeschlagen: $it" }
+                                    ?: "Übernommen: ${r.entries} Einträge, ${r.plugins} Erweiterungen installiert"
+                            )
                         }
                     },
                 ),

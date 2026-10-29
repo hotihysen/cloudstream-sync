@@ -133,6 +133,7 @@ object PluginManager {
                 setKey(PLUGINS_KEY_LOCAL, plugins.filter { it.filePath != data.filePath } + data)
             }
         }
+        if (data.isOnline) com.lagradost.cloudstream3.utils.DeviceSetupSync.onPluginsChanged()
     }
 
     private suspend fun deletePluginData(data: PluginData?) {
@@ -146,6 +147,7 @@ object PluginManager {
                 setKey(PLUGINS_KEY_LOCAL, plugins)
             }
         }
+        if (data.isOnline) com.lagradost.cloudstream3.utils.DeviceSetupSync.onPluginsChanged()
     }
 
     suspend fun deleteRepositoryData(repositoryPath: String) {

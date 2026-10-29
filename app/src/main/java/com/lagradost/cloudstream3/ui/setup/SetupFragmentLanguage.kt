@@ -83,6 +83,14 @@ class SetupFragmentLanguage : BaseFragment<FragmentSetupLanguageBinding>(
                     )
                 }
 
+                // Flimmer: alles von einem anderen Gerät übernehmen (Gist)
+                flimmerRestoreBtt.setOnClickListener {
+                    com.lagradost.cloudstream3.flimmer.FlimmerRestore.show(this@SetupFragmentLanguage) {
+                        setKey(HAS_DONE_SETUP_KEY, true)
+                        findNavController().navigate(R.id.navigation_home)
+                    }
+                }
+
                 skipBtt.setOnClickListener {
                     setKey(HAS_DONE_SETUP_KEY, true)
                     findNavController().navigate(R.id.navigation_home)

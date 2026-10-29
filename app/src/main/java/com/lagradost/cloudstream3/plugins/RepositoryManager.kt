@@ -258,6 +258,7 @@ object RepositoryManager {
             }
             setKey(REPOSITORIES_KEY, currentRepos)
         }
+        com.lagradost.cloudstream3.utils.DeviceSetupSync.onReposChanged()
     }
 
     /**
@@ -272,6 +273,7 @@ object RepositoryManager {
             val newRepos = currentRepos.filter { it.url != repository.url }
             setKey(REPOSITORIES_KEY, newRepos)
         }
+        com.lagradost.cloudstream3.utils.DeviceSetupSync.onReposChanged()
 
         val file = File(
             extensionsDir,

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:id="@+id/setup_root"
@@ -24,6 +25,28 @@
             android:text="@string/app_language"
             android:textSize="18sp" />
     </LinearLayout>
+
+    <!-- Flimmer: Einrichtung von einem anderen Gerät übernehmen -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/flimmer_restore_btt"
+        style="@style/WhiteButton"
+        android:layout_width="match_parent"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="4dp"
+        android:nextFocusDown="@id/listview1"
+        android:text="Von einem anderen Gerät übernehmen"
+        app:icon="@drawable/baseline_sync_24" />
+
+    <TextView
+        android:id="@+id/flimmer_restore_hint"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="20dp"
+        android:layout_marginEnd="20dp"
+        android:text="Profile, Repos, Erweiterungen und Einstellungen über deinen Gist holen"
+        android:textColor="?attr/grayTextColor"
+        android:textSize="13sp" />
 
     <ListView
         android:id="@+id/listview1"
