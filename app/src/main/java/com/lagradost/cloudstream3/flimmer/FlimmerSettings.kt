@@ -154,10 +154,10 @@ fun flimmerProfileGroup(): Preference.PreferenceGroup {
     if (!hasPin) {
         items += Preference.PreferenceItem.TextPreference(
             title = "PIN festlegen",
-            subtitle = "Profil «${current.name}» mit einer 4-stelligen PIN schützen. Sie wird beim Start und beim Wechsel ins Profil abgefragt",
+            subtitle = "Profil «${current.name}» mit einer 4-stelligen PIN schützen (zweimal eingeben). Sie wird beim Start und beim Wechsel ins Profil abgefragt",
             icon = painterResource(R.drawable.video_locked),
             onClick = {
-                com.lagradost.cloudstream3.ui.account.AccountHelper.showPinInputDialog(ctx, null, true) { pin ->
+                com.lagradost.cloudstream3.ui.account.AccountHelper.showNewPinDialog(ctx) { pin ->
                     if (pin != null && pin.length == 4) {
                         save(pin)
                         com.lagradost.cloudstream3.CommonActivity.showToast("PIN gesetzt", android.widget.Toast.LENGTH_SHORT)
@@ -174,7 +174,7 @@ fun flimmerProfileGroup(): Preference.PreferenceGroup {
                 val currentPin = com.lagradost.cloudstream3.utils.DataStoreHelper.getCurrentAccount()?.lockPin
                 com.lagradost.cloudstream3.ui.account.AccountHelper.showPinInputDialog(ctx, currentPin, true) { old ->
                     if (old == null || old != currentPin) return@showPinInputDialog
-                    com.lagradost.cloudstream3.ui.account.AccountHelper.showPinInputDialog(ctx, null, true) { pin ->
+                    com.lagradost.cloudstream3.ui.account.AccountHelper.showNewPinDialog(ctx) { pin ->
                         if (pin != null && pin.length == 4) {
                             save(pin)
                             com.lagradost.cloudstream3.CommonActivity.showToast("PIN geändert", android.widget.Toast.LENGTH_SHORT)
@@ -199,7 +199,7 @@ fun flimmerProfileGroup(): Preference.PreferenceGroup {
         )
     }
     items += Preference.PreferenceItem.InfoPreference(
-        title = "Die PIN gilt für dieses Profil auf allen Geräten (über den Gist-Sync). " +
+        title = "Die PIN gilt für dieses Profil auf allen Geräten (über den Gist-Sync). PIN vergessen? Beim Entsperren «PIN vergessen» wählen und den Gist-Token eingeben. " +
                 "Die Sperre mit Fingerabdruck unter «Sicherheit» schützt dagegen die ganze App und nur auf diesem Gerät."
     )
     return Preference.PreferenceGroup(

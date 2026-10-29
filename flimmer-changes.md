@@ -1,9 +1,6 @@
-Flimmer 17.8
-
-Trakt → Flimmer
-- Beim Öffnen einer Serie oder eines Films übernimmt Flimmer, was bei Trakt als gesehen gilt (Häkchen bei den Folgen). Bisher ging es nur in die andere Richtung
-- Entmarkiert wird dabei nichts; unter «Letzte Meldung an Trakt» steht, wie viele Folgen übernommen wurden
+Flimmer 17.9
 
 Profil-PIN
-- Einstellungen, Allgemein, ganz oben «Profil»: 4-stellige PIN festlegen, ändern oder entfernen, auch auf dem Fernseher
-- Die PIN wird beim Start und beim Wechsel ins Profil abgefragt und gilt über den Gist-Sync auf allen Geräten
+- Auch das Hauptprofil (erstes Profil) kann jetzt eine PIN haben, auch über langes Drücken aufs Profilbild, «Profil sperren»
+- Neue PIN wird zweimal eingegeben; stimmen die beiden nicht überein, wird nachgefragt
+- PIN vergessen: beim Entsperren «PIN vergessen» wählen und den Gist-Token eingeben (der gleiche wie im Cloud-Sync), dann ist das Profil offen und du kannst eine neue PIN setzen

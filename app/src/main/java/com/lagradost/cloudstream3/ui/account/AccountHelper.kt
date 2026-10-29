@@ -135,13 +135,7 @@ object AccountHelper {
             }
         }
 
-        // Handle setting or changing the PIN
-        if (currentEditAccount.keyIndex == getDefaultAccount(context).keyIndex) {
-            binding.lockProfileCheckbox.isVisible = false
-            if (currentEditAccount.lockPin != null) {
-                currentEditAccount = currentEditAccount.copy(lockPin = null)
-            }
-        }
+        // Flimmer: auch das Hauptprofil kann eine PIN haben (Notausgang: «PIN vergessen» mit dem Gist-Token)
 
         var canSetPin = true
 
@@ -150,7 +144,7 @@ object AccountHelper {
         binding.lockProfileCheckbox.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) {
                 if (canSetPin) {
-                    showPinInputDialog(context, null, true) { pin ->
+                    showNewPinDialog(context) { pin ->
                         if (pin == null) {
                             binding.lockProfileCheckbox.isChecked = false
                             return@showPinInputDialog
@@ -229,12 +223,26 @@ object AccountHelper {
         }
     }
 
+    /** Neue PIN: zweimal eingeben, damit sich kein Tippfehler einschleicht. Liefert die PIN oder null. */
+    fun showNewPinDialog(context: Context, callback: (String?) -> Unit) {
+        showPinInputDialog(context, null, true) { first ->
+            if (first == null || first.length != 4) {
+                callback(null)
+                return@showPinInputDialog
+            }
+            showPinInputDialog(context, first, false, confirmNewPin = true) { second ->
+                callback(if (second == first) second else null)
+            }
+        }
+    }
+
     fun showPinInputDialog(
         context: Context,
         currentPin: String?,
         editAccount: Boolean,
         forStartup: Boolean = false,
         errorText: String? = null,
+        confirmNewPin: Boolean = false,
         callback: (String?) -> Unit
     ) {
         fun TextView.visibleWithText(@StringRes textRes: Int) {
@@ -294,6 +302,40 @@ object AccountHelper {
             }
         }
 
+        if (confirmNewPin) builder.setTitle("PIN zur Bestätigung wiederholen")
+
+        // Flimmer: PIN vergessen? Mit dem Gist-Token (wie auf deinen anderen Geräten) entsperren
+        if (forStartup && isPinSet) {
+            val syncToken = com.lagradost.cloudstream4.AppSettings(context).sync.token.get().trim()
+            if (syncToken.isNotEmpty()) {
+                builder.setPositiveButton("PIN vergessen") { _, _ ->
+                    // Verhindert, dass das Schliessen dieses Dialogs die App beendet
+                    isPinValid = true
+                    val input = android.widget.EditText(context).apply {
+                        hint = "GitHub-Token (Gist-Sync)"
+                        inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+                    }
+                    AlertDialog.Builder(context, R.style.AlertDialogCustom)
+                        .setTitle("Mit dem Gist-Token entsperren")
+                        .setView(input)
+                        .setPositiveButton(R.string.setup_done) { _, _ ->
+                            if (input.text.toString().trim() == syncToken) {
+                                isPinValid = true
+                                showToast("Entsperrt. Unter Einstellungen, Profil kannst du eine neue PIN setzen.", Toast.LENGTH_LONG)
+                                callback.invoke(currentPin)
+                            } else {
+                                showToast("Token stimmt nicht", Toast.LENGTH_SHORT)
+                                showPinInputDialog(context, currentPin, editAccount, forStartup, null, false, callback)
+                            }
+                        }
+                        .setNegativeButton(R.string.cancel) { _, _ ->
+                            showPinInputDialog(context, currentPin, editAccount, forStartup, null, false, callback)
+                        }
+                        .show()
+                }
+            }
+        }
+
         if (isNewPin) {
             if (errorText != null) binding.pinEditTextError.visibleWithText(errorText)
             builder.setPositiveButton(R.string.setup_done) { _, _ ->
@@ -323,7 +365,8 @@ object AccountHelper {
             if (isEnteredPinValid) {
                 if (isPinSet) {
                     if (enteredPin != currentPin) {
-                        binding.pinEditTextError.visibleWithText(R.string.pin_error_incorrect)
+                        if (confirmNewPin) binding.pinEditTextError.visibleWithText("Die beiden PINs stimmen nicht überein, bitte nochmals")
+                        else binding.pinEditTextError.visibleWithText(R.string.pin_error_incorrect)
                         binding.pinEditText.text = null
                         isPinValid = false
                     } else {
