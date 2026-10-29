@@ -147,7 +147,7 @@ object AccountHelper {
                     showNewPinDialog(context) { pin ->
                         if (pin == null) {
                             binding.lockProfileCheckbox.isChecked = false
-                            return@showPinInputDialog
+                            return@showNewPinDialog
                         }
 
                         currentEditAccount = currentEditAccount.copy(lockPin = pin)
