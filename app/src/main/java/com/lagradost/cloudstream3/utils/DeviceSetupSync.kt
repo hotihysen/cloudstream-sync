@@ -178,7 +178,8 @@ object DeviceSetupSync {
         val added = remote.filter { r -> local.none { it.url == r.url } }
         if (added.isNotEmpty()) {
             applying = true
-            CloudStreamApp.setKey(REPOSITORIES_KEY, (local + added).toTypedArray())
+            val merged: Array<RepositoryData> = local + added
+            CloudStreamApp.setKey<Array<RepositoryData>>(REPOSITORIES_KEY, merged)
             applying = false
         }
         added.size
