@@ -322,6 +322,15 @@ object CloudSync {
         if (pending.isEmpty()) return@withLock true
 
         val store = ctx.getSharedPrefs()
+        // Gist-ID vorher kennen, sie ist Teil des PIN-Schlüssels
+        if (mode(ctx) == MODE_GIST && PROFILES_KEY in pending) {
+            try {
+                gistId(ctx)
+            } catch (t: Throwable) {
+                setStatus(ctx, t.message ?: t.javaClass.simpleName)
+                return@withLock false
+            }
+        }
         val records = pending.mapNotNull { key ->
             val path = storagePath(key) ?: return@mapNotNull null
             var raw = store.getString(path, null)
@@ -433,7 +442,8 @@ object CloudSync {
                 if (r.t <= localT) continue // lokal gleich alt oder neuer
                 if (r.k == PROFILES_KEY) {
                     // Profile nie löschen, nur ergänzen bzw. aktualisieren
-                    r.v?.let { v -> DataStoreHelper.mergeSyncedProfiles(ProfileCrypt.reveal(v, cryptKey(ctx))) }
+                    val plain = r.v?.let { v -> ProfileCrypt.reveal(v, cryptKey(ctx)) } ?: continue
+                    DataStoreHelper.mergeSyncedProfiles(plain)
                     times.putLong(TIME_PREFIX + r.k, r.t)
                     applied++
                     continue

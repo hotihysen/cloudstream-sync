@@ -43,9 +43,22 @@ object ProfileCrypt {
         if (pin.startsWith(PREFIX)) pin else encrypt(pin, secret)
     }
 
-    /** Profil-Liste mit lesbarer PIN; nicht entschlüsselbare PIN wird entfernt (Profil bleibt ungesperrt) */
-    fun reveal(json: String, secret: String): String = transform(json) { pin ->
-        if (pin.startsWith(PREFIX)) decrypt(pin, secret) else pin
+    /** Profil-Liste mit lesbarer PIN; null, wenn eine PIN nicht entschlüsselt werden kann (dann nichts übernehmen) */
+    fun reveal(json: String, secret: String): String? = try {
+        transformStrict(json) { pin ->
+            if (pin.startsWith(PREFIX)) decrypt(pin, secret) ?: throw IllegalStateException("PIN") else pin
+        }
+    } catch (t: Throwable) {
+        null
+    }
+
+    private fun transformStrict(json: String, f: (String) -> String): String {
+        val arr = JSONArray(json)
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            if (o.has("lockPin") && !o.isNull("lockPin")) o.put("lockPin", f(o.getString("lockPin")))
+        }
+        return arr.toString()
     }
 
     private fun transform(json: String, f: (String) -> String?): String = try {
