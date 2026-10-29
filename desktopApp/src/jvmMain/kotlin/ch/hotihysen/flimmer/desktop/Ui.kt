@@ -101,7 +101,7 @@ fun FlimmerButton(text: String, primary: Boolean = false, modifier: Modifier = M
             .padding(horizontal = 22.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, color = if (primary) Color.Black else Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+        Text(text, color = if (primary) Color.Black else Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1, softWrap = false)
     }
 }
 
