@@ -114,6 +114,7 @@ object Extensions {
     suspend fun fetchRepo(url: String): Repo = withContext(Dispatchers.IO) {
         val text = app.get(url).text
         val manifest = json.decodeFromString(RepoManifest.serializer(), text)
+        DeviceSetup.rememberRepoName(url, manifest.name)
         val plugins = coroutineScope {
             manifest.pluginLists.map { list ->
                 async {

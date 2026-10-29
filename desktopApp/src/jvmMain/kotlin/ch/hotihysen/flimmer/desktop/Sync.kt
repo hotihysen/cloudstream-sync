@@ -20,17 +20,30 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.UUID
 
 /**
- * Wiedergabestand (Weiterschauen, Positionen) und Gist-Sync, im gleichen Format wie die Android-App.
- * Dadurch erscheint, was am PC geschaut wurde, auch auf Handy und Fernseher, und umgekehrt.
+ * Gist-Sync im gleichen Format wie die Android-App:
+ * - pro Profil: Wiedergabeposition, Weiterschauen, Gesehen-Markierungen, Merkliste (Lesezeichen)
+ * - gemeinsam: Profile (PIN verschlüsselt), Repos, Erweiterungen, wichtige Einstellungen
+ *
+ * Jedes Gerät schreibt pro Profil die Datei «device-<id>-p<profil>.json». Gemeinsame Einträge stehen
+ * in den Dateien aller Profile und werden aus allen gelesen.
  */
 object Sync {
     private const val GITHUB_API = "https://api.github.com"
     private const val GIST_MARKER = "cloudstream-sync.json"
-    private const val PROFILE = "0"
     private val JSON_TYPE = "application/json; charset=utf-8".toMediaType()
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true; explicitNulls = false }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val lock = Mutex()
+
+    // Gemeinsame Einträge (nicht pro Profil)
+    const val KEY_PROFILES = "prof/0"
+    const val KEY_REPOS = "repo/0"
+    const val KEY_PLUGINS = "plug/0"
+    const val KEY_SETTINGS = "set/0"
+    private val GLOBAL_KEYS = setOf(KEY_PROFILES, KEY_REPOS, KEY_PLUGINS, KEY_SETTINGS)
+
+    /** Wird aufgerufen, wenn ein gemeinsamer Eintrag von einem anderen Gerät kommt (Profile, Repos, …). */
+    @Volatile var onGlobal: ((key: String, value: String) -> Unit)? = null
 
     @Serializable
     data class Record(
@@ -86,14 +99,51 @@ object Sync {
         @SerialName("id") val id: Int,
     )
 
+    /** Lesezeichen-Daten wie DataStoreHelper.BookmarkedData in der App */
+    @Serializable
+    data class Bookmark(
+        @SerialName("bookmarkedTime") val bookmarkedTime: Long = 0,
+        @SerialName("id") val id: Int? = null,
+        @SerialName("latestUpdatedTime") val latestUpdatedTime: Long = 0,
+        @SerialName("name") val name: String = "",
+        @SerialName("url") val url: String = "",
+        @SerialName("apiName") val apiName: String = "",
+        @SerialName("type") val type: String? = null,
+        @SerialName("posterUrl") val posterUrl: String? = null,
+        @SerialName("year") val year: Int? = null,
+        @SerialName("syncData") val syncData: Map<String, String>? = null,
+        @SerialName("plot") val plot: String? = null,
+        @SerialName("tags") val tags: List<String>? = null,
+    )
+
+    /** Lesezeichen-Status, gleiche Nummern wie WatchType in der App */
+    enum class WatchType(val id: Int, val label: String) {
+        WATCHING(0, "Am Schauen"), COMPLETED(1, "Abgeschlossen"), ONHOLD(2, "Pausiert"),
+        DROPPED(3, "Abgebrochen"), PLANTOWATCH(4, "Geplant");
+
+        companion object {
+            fun of(id: Int?) = entries.firstOrNull { it.id == id }
+        }
+    }
+
     data class ResumeItem(val resume: ResumeWatching, val header: Header, val pos: PosDur?)
 
     private val _version = MutableStateFlow(0)
-    /** Ändert sich bei jeder lokalen oder synchronisierten Änderung (für die Startseite). */
+    /** Ändert sich bei jeder lokalen oder synchronisierten Änderung (für die Anzeige). */
     val version: StateFlow<Int> = _version
 
     private val _status = MutableStateFlow(Store.getString("sync/status") ?: "")
     val status: StateFlow<String> = _status
+
+    fun changed() {
+        _version.value++
+    }
+
+    /** Nach mehreren Änderungen ohne Hochladen: anzeigen und hochladen */
+    fun commit() {
+        _version.value++
+        schedulePush()
+    }
 
     // ---------------------------------------------------------------- Einstellungen
 
@@ -113,22 +163,73 @@ object Sync {
     private val deviceId: String
         get() = Store.getString("sync/device") ?: ("pc-" + UUID.randomUUID().toString()).also { Store.putString("sync/device", it) }
 
+    /** Aktuelles Profil (keyIndex wie in der App) */
+    var profile: Int
+        get() = Store.getString("profile/current")?.toIntOrNull() ?: 0
+        set(value) {
+            Store.putString("profile/current", value.toString())
+            _version.value++
+        }
+
     // ---------------------------------------------------------------- Lokale Daten
 
-    private fun rec(k: String): Record? = Store.getString("sync/rec/$k")?.let {
+    private fun isGlobal(k: String) = k in GLOBAL_KEYS
+
+    /** Profil 0 behält die bisherigen Speicherorte (Daten aus früheren Versionen) */
+    private fun storeKey(k: String, p: Int = profile) = when {
+        isGlobal(k) -> "sync/global/$k"
+        p == 0 -> "sync/rec/$k"
+        else -> "sync/rec$p/$k"
+    }
+
+    private fun pendingKey(p: Int = profile) = if (p == 0) "sync/pending" else "sync/pending$p"
+    private const val PENDING_GLOBAL = "sync/pendingGlobal"
+    private fun ownFileKey(p: Int = profile) = if (p == 0) "sync/ownFile" else "sync/ownFile$p"
+
+    private fun rec(k: String): Record? = Store.getString(storeKey(k))?.let {
         try { json.decodeFromString(Record.serializer(), it) } catch (_: Throwable) { null }
     }
 
     private fun value(k: String): String? = rec(k)?.takeIf { !it.d }?.v
 
-    private fun put(k: String, v: String?) {
-        val r = Record(k, v, System.currentTimeMillis(), v == null)
-        Store.putString("sync/rec/$k", json.encodeToString(Record.serializer(), r))
-        val pending = pending().toMutableSet().apply { add(k) }
-        Store.putString("sync/pending", pending.joinToString("\n"))
+    private fun readSet(key: String): Set<String> =
+        Store.getString(key)?.split("\n")?.filter { it.isNotBlank() }?.toSet() ?: emptySet()
+
+    private fun put(k: String, v: String?, time: Long = System.currentTimeMillis()) {
+        val r = Record(k, v, time, v == null)
+        Store.putString(storeKey(k), json.encodeToString(Record.serializer(), r))
+        val pk = if (isGlobal(k)) PENDING_GLOBAL else pendingKey()
+        Store.putString(pk, (readSet(pk) + k).joinToString("\n"))
     }
 
-    private fun pending(): Set<String> = Store.getString("sync/pending")?.split("\n")?.filter { it.isNotBlank() }?.toSet() ?: emptySet()
+    private fun schedulePush() {
+        if (isActive) scope.launch { push() }
+    }
+
+    // ---------------------------------------------------------------- Gemeinsame Einträge
+
+    fun global(k: String): String? = value(k)
+
+    /** Gemeinsamen Eintrag lokal ändern (wird hochgeladen) */
+    fun putGlobal(k: String, v: String) {
+        if (value(k) == v) return
+        put(k, v)
+        schedulePush()
+    }
+
+    /** Wert eines gemeinsamen Eintrags ersetzen, ohne ihn als eigene Änderung zu senden (z.B. nach dem Zusammenführen) */
+    fun replaceGlobalSilently(k: String, v: String) {
+        val r = rec(k) ?: Record(k, v, 1L)
+        Store.putString(storeKey(k), json.encodeToString(Record.serializer(), r.copy(v = v, d = false)))
+    }
+
+    /** Erstmalig vorhandenen Stand anbieten: verliert gegen jede echte Änderung anderer Geräte */
+    fun offerGlobal(k: String, v: String) {
+        if (rec(k) != null) return
+        put(k, v, time = 1L)
+    }
+
+    // ---------------------------------------------------------------- Wiedergabe
 
     fun position(episodeId: Int): PosDur? = value("pos/$episodeId")?.let {
         try { json.decodeFromString(PosDur.serializer(), it) } catch (_: Throwable) { null }
@@ -143,6 +244,7 @@ object Sync {
         put("pos/$episodeId", json.encodeToString(PosDur.serializer(), PosDur(positionMs, durationMs)))
         val finished = positionMs >= durationMs * 0.92
         val isMovie = header.type.contains("Movie")
+        if (finished) setWatched(episodeId, true, push = false)
         if (finished && isMovie) {
             put("resume/$parentId", null)
         } else {
@@ -156,23 +258,75 @@ object Sync {
             put("header/$parentId", json.encodeToString(Header.serializer(), header.copy(cacheTime = System.currentTimeMillis())))
         }
         _version.value++
-        if (isActive) scope.launch { push() }
+        schedulePush()
     }
 
     fun removeResume(parentId: Int) {
         put("resume/$parentId", null)
         _version.value++
-        if (isActive) scope.launch { push() }
+        schedulePush()
     }
 
-    fun resumeList(): List<ResumeItem> = Store.keys("sync/rec/resume/").mapNotNull { key ->
-        val k = key.removePrefix("sync/rec/")
+    fun resumeList(): List<ResumeItem> = Store.keys(storeKey("resume/")).mapNotNull { key ->
+        val k = "resume/" + key.removePrefix(storeKey("resume/"))
         val r = value(k)?.let { try { json.decodeFromString(ResumeWatching.serializer(), it) } catch (_: Throwable) { null } }
             ?: return@mapNotNull null
         val h = value("header/${r.parentId}")?.let { try { json.decodeFromString(Header.serializer(), it) } catch (_: Throwable) { null } }
             ?: return@mapNotNull null
         ResumeItem(r, h, r.episodeId?.let { position(it) } ?: position(r.parentId))
     }.sortedByDescending { it.resume.updateTime }
+
+    // ---------------------------------------------------------------- Gesehen-Markierungen
+
+    fun isWatched(episodeId: Int): Boolean = value("ws/$episodeId")?.contains("Watched") == true
+
+    fun setWatched(episodeId: Int, watched: Boolean, push: Boolean = true) {
+        if (isWatched(episodeId) == watched) return
+        put("ws/$episodeId", if (watched) "\"Watched\"" else null)
+        if (push) {
+            _version.value++
+            schedulePush()
+        }
+    }
+
+    /** Mehrere auf einmal (z.B. von Trakt übernommen) */
+    fun setWatchedMany(ids: Collection<Int>): Int {
+        var n = 0
+        ids.forEach { if (!isWatched(it)) { put("ws/$it", "\"Watched\""); n++ } }
+        if (n > 0) {
+            _version.value++
+            schedulePush()
+        }
+        return n
+    }
+
+    // ---------------------------------------------------------------- Merkliste (Lesezeichen)
+
+    fun bookmarkStatus(id: Int): WatchType? = WatchType.of(value("bm/$id")?.trim()?.toIntOrNull())
+
+    fun setBookmark(id: Int, status: WatchType?, data: Bookmark?) {
+        if (status == null) {
+            put("bm/$id", null)
+            put("bmd/$id", null)
+        } else {
+            put("bm/$id", status.id.toString())
+            data?.let { put("bmd/$id", json.encodeToString(Bookmark.serializer(), it.copy(id = id, latestUpdatedTime = System.currentTimeMillis()))) }
+        }
+        _version.value++
+        schedulePush()
+    }
+
+    /** Alle Lesezeichen des aktuellen Profils */
+    fun bookmarks(): List<Pair<WatchType, Bookmark>> {
+        val prefix = storeKey("bm/")
+        return Store.keys(prefix).mapNotNull { key ->
+            val id = key.removePrefix(prefix).toIntOrNull() ?: return@mapNotNull null
+            val st = bookmarkStatus(id) ?: return@mapNotNull null
+            val data = value("bmd/$id")?.let { try { json.decodeFromString(Bookmark.serializer(), it) } catch (_: Throwable) { null } }
+                ?: return@mapNotNull null
+            st to data
+        }.sortedByDescending { it.second.latestUpdatedTime }
+    }
 
     // ---------------------------------------------------------------- GitHub Gist
 
@@ -182,8 +336,9 @@ object Sync {
         "Content-Type" to "application/json",
     )
 
-    private fun ownFileName() = "device-$deviceId-p$PROFILE.json"
-    private fun isProfileFile(name: String) = name.startsWith("device-") && name.endsWith("-p$PROFILE.json")
+    private fun ownFileName(p: Int = profile) = "device-$deviceId-p$p.json"
+    private fun profileOf(name: String): Int? =
+        if (name.startsWith("device-") && name.endsWith(".json")) name.substringAfterLast("-p").removeSuffix(".json").toIntOrNull() else null
 
     private fun httpError(code: Int) = when (code) {
         401 -> "Token ungültig oder abgelaufen"
@@ -212,6 +367,9 @@ object Sync {
         return id
     }
 
+    /** Schlüssel für die PIN, wie in der App: aus der Gist-ID */
+    private fun cryptKey() = "gist:" + (Store.getString("sync/gistId") ?: "")
+
     private fun setStatus(error: String?) {
         val text = if (error == null) "Zuletzt synchronisiert: " +
                 java.text.SimpleDateFormat("dd.MM.yyyy HH:mm").format(java.util.Date()) else "Fehler: $error"
@@ -221,15 +379,17 @@ object Sync {
 
     suspend fun push(): Boolean = lock.withLock {
         if (!isActive) return@withLock false
-        val keys = pending()
-        if (keys.isEmpty()) return@withLock true
+        val keys = readSet(pendingKey())
+        val globals = readSet(PENDING_GLOBAL)
+        if (keys.isEmpty() && globals.isEmpty()) return@withLock true
         try {
             val id = gistId()
-            val own = Store.getString("sync/ownFile")?.let {
+            val own = Store.getString(ownFileKey())?.let {
                 try { json.decodeFromString(DeviceFile.serializer(), it).records.toMutableMap() } catch (_: Throwable) { null }
             } ?: mutableMapOf()
-            for (k in keys) {
-                val r = rec(k) ?: continue
+            for (k in keys + globals) {
+                var r = rec(k) ?: continue
+                if (k == KEY_PROFILES && r.v != null) r = r.copy(v = ProfileCrypt.protect(r.v!!, cryptKey()))
                 val cur = own[k]
                 if (cur == null || r.t >= cur.t) own[k] = r
             }
@@ -241,9 +401,9 @@ object Sync {
             val res = app.patch("$GITHUB_API/gists/$id", headers = githubHeaders(), requestBody = body.toRequestBody(JSON_TYPE))
             if (res.code == 404) Store.putString("sync/gistId", null)
             if (!res.isSuccessful) throw IllegalStateException(httpError(res.code))
-            Store.putString("sync/ownFile", content)
-            val now = pending().toMutableSet().apply { removeAll(keys) }
-            Store.putString("sync/pending", now.joinToString("\n").ifEmpty { null })
+            Store.putString(ownFileKey(), content)
+            Store.putString(pendingKey(), (readSet(pendingKey()) - keys).joinToString("\n").ifEmpty { null })
+            Store.putString(PENDING_GLOBAL, (readSet(PENDING_GLOBAL) - globals).joinToString("\n").ifEmpty { null })
             setStatus(null)
             true
         } catch (t: Throwable) {
@@ -252,10 +412,11 @@ object Sync {
         }
     }
 
-    /** Stand der anderen Geräte holen. Gibt die Anzahl übernommener Einträge zurück. */
+    /** Stand der anderen Geräte holen. Gibt die Anzahl übernommener Einträge zurück, oder -1 bei Fehler. */
     suspend fun pull(): Int {
         if (!isActive) return 0
         push()
+        val p = profile
         return lock.withLock {
             try {
                 val id = gistId()
@@ -265,7 +426,9 @@ object Sync {
                 val gist = json.decodeFromString(Gist.serializer(), res.text)
                 val newest = HashMap<String, Record>()
                 for ((name, f) in gist.files) {
-                    if (name == ownFileName() || !isProfileFile(name)) continue
+                    val fileProfile = profileOf(name) ?: continue
+                    if (name == ownFileName(p)) continue
+                    val sameProfile = fileProfile == p
                     val text = if (!f.truncated && f.content != null) f.content else {
                         val url = f.rawUrl ?: continue
                         val raw = app.get(url, headers = mapOf("Authorization" to "Bearer $token"))
@@ -274,6 +437,8 @@ object Sync {
                     }
                     val device = try { json.decodeFromString(DeviceFile.serializer(), text) } catch (_: Throwable) { continue }
                     for (r in device.records.values) {
+                        // Aus fremden Profilen nur die gemeinsamen Einträge
+                        if (!sameProfile && !isGlobal(r.k)) continue
                         val cur = newest[r.k]
                         if (cur == null || r.t > cur.t) newest[r.k] = r
                     }
@@ -282,7 +447,18 @@ object Sync {
                 for (r in newest.values) {
                     val local = rec(r.k)
                     if (local != null && r.t <= local.t) continue
-                    Store.putString("sync/rec/${r.k}", json.encodeToString(Record.serializer(), r))
+                    if (isGlobal(r.k)) {
+                        var v = r.v ?: continue
+                        if (r.k == KEY_PROFILES) v = ProfileCrypt.reveal(v, cryptKey()) ?: continue
+                        Store.putString(storeKey(r.k), json.encodeToString(Record.serializer(), r.copy(v = v)))
+                        try {
+                            onGlobal?.invoke(r.k, v)
+                        } catch (t: Throwable) {
+                            System.err.println("Sync ${r.k}: ${t.message}")
+                        }
+                    } else {
+                        Store.putString(storeKey(r.k), json.encodeToString(Record.serializer(), r))
+                    }
                     applied++
                 }
                 setStatus(null)
@@ -290,7 +466,7 @@ object Sync {
                 applied
             } catch (t: Throwable) {
                 setStatus(t.message ?: t.javaClass.simpleName)
-                0
+                -1
             }
         }
     }

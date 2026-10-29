@@ -109,4 +109,25 @@ object Catalog {
         Ep(id, season, episode ?: (index + 1), name, description, posterUrl, data, runTime)
 
     fun movieData(load: LoadResponse): String? = (load as? MovieLoadResponse)?.dataUrl
+
+    /** (istSerie, TMDB-ID) bei Titeln aus dem Katalog, für Trakt */
+    fun tmdbOf(load: LoadResponse): Pair<Boolean, Int>? {
+        if (!FlimmerKatalog.isKatalog(load.apiName)) return null
+        val isTv = load.url.contains("/tv/")
+        val id = load.url.substringAfterLast("/").substringBefore("?").toIntOrNull() ?: return null
+        return isTv to id
+    }
+
+    fun bookmarkOf(load: LoadResponse) = Sync.Bookmark(
+        bookmarkedTime = System.currentTimeMillis(),
+        id = mainId(load),
+        name = load.name,
+        url = load.url,
+        apiName = load.apiName,
+        type = load.type.name,
+        posterUrl = load.posterUrl,
+        year = load.year,
+        plot = load.plot,
+        tags = load.tags,
+    )
 }

@@ -187,8 +187,11 @@ jobs:
           sleep 2
           (timeout 300 ./gradlew :desktopApp:run --no-daemon --console=plain > run.log 2>&1 &)
           mkdir -p shots
-          for t in 60 120; do sleep 60; import -window root shots/start-$t.png; done
+          sleep 60; import -window root shots/erster-start.png
           WID=$(xdotool search --name "^Flimmer$" | head -1); echo "Fenster: $WID"
+          # Erster Start: «Neu einrichten» (Escape)
+          xdotool mousemove --window $WID 40 900; sleep 0.5; xdotool click 1; sleep 0.5; xdotool key Escape
+          sleep 50; import -window root shots/start-120.png
           # Hero: «Weitere Infos»
           xdotool mousemove --window $WID 300 480; sleep 1; xdotool click 1; sleep 15; import -window root shots/detail-hero.png
           for i in $(seq 1 12); do xdotool click 5; sleep 0.2; done; sleep 4; import -window root shots/detail-folgen.png
@@ -198,6 +201,8 @@ jobs:
           xdotool key Escape; sleep 3
           xdotool mousemove --window $WID 1210 34; sleep 1; xdotool click 1; sleep 10; import -window root shots/suche.png
           xdotool type --delay 80 "dark"; sleep 8; import -window root shots/suche-dark.png
+          xdotool key ctrl+l; sleep 10; import -window root shots/bibliothek.png
+          xdotool key ctrl+comma; sleep 6; import -window root shots/einstellungen.png
           tail -60 run.log | awk '{printf "%s%%0A", $0}' | sed 's/^/::notice::Log%0A/'; echo
       - name: Fotos hochladen
         if: always()

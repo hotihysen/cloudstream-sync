@@ -42,6 +42,9 @@ class PlaybackSession(
         @Volatile var started = false
         var lastPos = 0L
         var lastDur = 0L
+        /** Tatsächlich geschaute Sekunden in dieser Sitzung (für «Am schauen» bei Trakt) */
+        var watchedSec = 0
+        var watchingSent = false
         val title: String get() = titleOf(ep)
         val startSec: Long
             get() {
@@ -228,8 +231,16 @@ class PlaybackSession(
                     scrobble(st.index, "start")
                     prepareNext(st.index)
                 }
+                if (st.positionMs > item.lastPos && st.positionMs - item.lastPos < 5_000) item.watchedSec++
                 item.lastPos = st.positionMs
                 item.lastDur = st.durationMs
+                // Nach 10 Minuten: bei Trakt «Am schauen» (Fortschritt speichern, aus «Geplant» nehmen)
+                if (!item.watchingSent && item.watchedSec >= 600 && item.lastDur > 0) {
+                    item.watchingSent = true
+                    traktIds(item.data)?.let { (isTv, tmdb) ->
+                        Trakt.markWatching(isTv, tmdb, item.ep?.season, item.ep?.episode, item.lastPos * 100.0 / item.lastDur)
+                    }
+                }
             }
         }
         Player.readStatus()?.let { st ->

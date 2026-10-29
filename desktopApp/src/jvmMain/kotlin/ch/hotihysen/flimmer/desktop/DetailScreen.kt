@@ -41,6 +41,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.lagradost.cloudstream3.LoadResponse
+import androidx.compose.foundation.layout.size
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
@@ -70,6 +73,32 @@ fun DetailScreen(apiName: String, url: String, nav: Nav) {
     // Startstaffel: die der zuletzt geschauten Folge, sonst die erste
     val resume = remember(l, syncVersion) { Sync.resumeList().firstOrNull { it.header.id == Catalog.mainId(l) } }
     var season by remember(l) { mutableStateOf(resume?.resume?.season ?: seasons.firstOrNull()) }
+    val tmdb = remember(l) { Catalog.tmdbOf(l) }
+    val mainId = remember(l) { Catalog.mainId(l) }
+    val bookmark = remember(l, syncVersion) { Sync.bookmarkStatus(mainId) }
+    var listMenu by remember(l) { mutableStateOf(false) }
+
+    // Bei Trakt Gesehenes übernehmen (z.B. auf einem anderen Gerät oder direkt bei Trakt markiert)
+    LaunchedEffect(l) {
+        val (isTv, id) = tmdb ?: return@LaunchedEffect
+        if (!Trakt.isLoggedIn) return@LaunchedEffect
+        val seen = withContext(Dispatchers.IO) { Trakt.watchedOf(isTv, id) }
+        if (seen.isEmpty()) return@LaunchedEffect
+        val ids = if (isTv) episodes.filter { (it.season ?: 1) to it.episode in seen }.map { it.id } else listOf(mainId)
+        Trakt.reportImported(Sync.setWatchedMany(ids), l.name)
+    }
+
+    fun toggleWatched(eps: List<Catalog.Ep>, watched: Boolean) {
+        eps.forEach { Sync.setWatched(it.id, watched, push = false) }
+        Sync.commit()
+        tmdb?.let { (isTv, id) -> Trakt.markHistory(isTv, id, eps.map { (it.season ?: 1) to it.episode }, watched) }
+    }
+
+    fun setList(status: Sync.WatchType?) {
+        Sync.setBookmark(mainId, status, Catalog.bookmarkOf(l))
+        tmdb?.let { (isTv, id) -> Trakt.onBookmark(isTv, id, status) }
+        listMenu = false
+    }
 
     LazyColumn(Modifier.fillMaxSize()) {
         item(key = "head") {
@@ -104,9 +133,33 @@ fun DetailScreen(apiName: String, url: String, nav: Nav) {
                         FlimmerButton(label, primary = true) { nav.playDefault(l) }
                         Gap(w = 12)
                         FlimmerButton("‹  Zurück") { nav.back() }
+                        Gap(w = 12)
+                        FlimmerButton(if (bookmark != null) "✓  ${bookmark.label}" else "+  Meine Liste") { listMenu = !listMenu }
+                        if (episodes.isEmpty()) {
+                            Gap(w = 12)
+                            val seen = Sync.isWatched(mainId)
+                            FlimmerButton(if (seen) "✓  Gesehen" else "Als gesehen markieren") {
+                                Sync.setWatched(mainId, !seen)
+                                tmdb?.let { (isTv, id) -> Trakt.markHistory(isTv, id, emptyList(), !seen) }
+                            }
+                        }
                         if (resume != null) {
                             Gap(w = 12)
-                            FlimmerButton("Aus «Weiterschauen» entfernen") { Sync.removeResume(resume.header.id) }
+                            FlimmerButton("Aus «Weiterschauen» entfernen") {
+                                Sync.removeResume(resume.header.id)
+                                tmdb?.let { (isTv, id) -> Trakt.removeFromContinue(isTv, id) }
+                            }
+                        }
+                    }
+                    if (listMenu) {
+                        Gap(h = 10)
+                        FlowRow(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+                            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                            Sync.WatchType.entries.forEach { wt ->
+                                Pill(wt.label, if (wt == bookmark) FlimmerColors.Accent else FlimmerColors.SurfaceHigh,
+                                    if (wt == bookmark) Color.Black else Color.White) { setList(wt) }
+                            }
+                            if (bookmark != null) Pill("Entfernen", Color(0x33FF7A4D), FlimmerColors.Accent) { setList(null) }
                         }
                     }
                     l.actors?.takeIf { it.isNotEmpty() }?.let { actors ->
@@ -137,11 +190,19 @@ fun DetailScreen(apiName: String, url: String, nav: Nav) {
                         }
                         Gap(h = 12)
                     }
+                    val inSeason = episodes.filter { season == null || it.season == season }
+                    val allSeen = inSeason.isNotEmpty() && inSeason.all { Sync.isWatched(it.id) }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TabText(if (allSeen) "Staffel als nicht gesehen markieren" else "Ganze Staffel als gesehen markieren", false) {
+                            toggleWatched(inSeason, !allSeen)
+                        }
+                    }
+                    Gap(h = 6)
                 }
             }
             val shown = episodes.filter { season == null || it.season == season }
             items(shown, key = { "ep${it.id}" }) { ep ->
-                EpisodeRow(ep, l, syncVersion) { nav.play(l, ep) }
+                EpisodeRow(ep, l, syncVersion, onToggleWatched = { toggleWatched(listOf(ep), !Sync.isWatched(ep.id)) }) { nav.play(l, ep) }
             }
         }
 
@@ -157,10 +218,11 @@ fun DetailScreen(apiName: String, url: String, nav: Nav) {
 }
 
 @Composable
-private fun EpisodeRow(ep: Catalog.Ep, load: LoadResponse, syncVersion: Int, onClick: () -> Unit) {
+private fun EpisodeRow(ep: Catalog.Ep, load: LoadResponse, syncVersion: Int, onToggleWatched: () -> Unit, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val pos = remember(ep.id, syncVersion) { Sync.position(ep.id) }
+    val watched = remember(ep.id, syncVersion) { Sync.isWatched(ep.id) }
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 40.dp, vertical = 2.dp)
             .clip(RoundedCornerShape(8.dp))
@@ -196,6 +258,16 @@ private fun EpisodeRow(ep: Catalog.Ep, load: LoadResponse, syncVersion: Int, onC
                 Gap(h = 6)
                 Text(it, color = FlimmerColors.TextDim, fontSize = 14.sp, maxLines = 3, overflow = TextOverflow.Ellipsis, lineHeight = 19.sp)
             }
+        }
+        Gap(w = 12)
+        // Gesehen-Häkchen (an- und abwählbar, geht auch an Trakt)
+        Box(
+            Modifier.size(34.dp).clip(androidx.compose.foundation.shape.CircleShape)
+                .background(if (watched) FlimmerColors.Good else FlimmerColors.SurfaceHigh)
+                .clickable(onClick = onToggleWatched).handCursor(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("✓", color = if (watched) Color.Black else FlimmerColors.TextDim, fontSize = 17.sp, fontWeight = FontWeight.Bold)
         }
     }
 }

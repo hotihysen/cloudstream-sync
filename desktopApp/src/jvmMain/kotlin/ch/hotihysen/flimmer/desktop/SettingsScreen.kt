@@ -42,14 +42,14 @@ import com.lagradost.cloudstream3.flimmer.FlimmerStreams
 import kotlinx.coroutines.launch
 
 @Composable
-private fun Card(content: @Composable () -> Unit) {
+internal fun Card(content: @Composable () -> Unit) {
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(FlimmerColors.Surface).padding(18.dp)
     ) { content() }
 }
 
 @Composable
-private fun SettingSwitch(title: String, subtitle: String?, checked: Boolean, onChange: (Boolean) -> Unit) {
+internal fun SettingSwitch(title: String, subtitle: String?, checked: Boolean, onChange: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(title, color = Color.White, fontSize = 15.sp)
@@ -63,7 +63,7 @@ private fun SettingSwitch(title: String, subtitle: String?, checked: Boolean, on
 }
 
 @Composable
-private fun field(value: String, onChange: (String) -> Unit, placeholder: String, password: Boolean = false, modifier: Modifier = Modifier) {
+internal fun field(value: String, onChange: (String) -> Unit, placeholder: String, password: Boolean = false, modifier: Modifier = Modifier) {
     OutlinedTextField(
         value = value, onValueChange = onChange, singleLine = true,
         placeholder = { Text(placeholder, fontSize = 14.sp) },
@@ -80,6 +80,12 @@ fun SettingsScreen(nav: Nav) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 48.dp, vertical = 16.dp).widthIn(max = 1000.dp)
     ) {
         Text("Einstellungen", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+        // Beim Verlassen: geänderte Repos, Erweiterungen und Einstellungen an die anderen Geräte melden
+        androidx.compose.runtime.DisposableEffect(Unit) { onDispose { DeviceSetup.snapshot() } }
+
+        // ------------------------------------------------------------ Profil
+        SectionTitle("Profil")
+        ProfileSection()
 
         // ------------------------------------------------------------ Erweiterungen
         SectionTitle("Erweiterungen")
@@ -105,10 +111,14 @@ fun SettingsScreen(nav: Nav) {
                 }
             }
             if (status.isNotBlank()) { Gap(h = 8); Dim(status, 13) }
+            Gap(h = 14)
+            Dim("Synchronisiert werden auch Profile (mit PIN), Repos, Erweiterungen, Einstellungen und Merklisten.", 13)
+            Gap(h = 10)
+            RestoreFlow(showTokenField = false)
         }
 
         // ------------------------------------------------------------ Trakt
-        SectionTitle("Trakt")
+        SectionTitle("Trakt (Profil «${Profiles.current.name}»)")
         Card { TraktSection() }
 
         // ------------------------------------------------------------ Wiedergabe
@@ -164,7 +174,11 @@ fun SettingsScreen(nav: Nav) {
 @Composable
 private fun TraktSection() {
     val scope = rememberCoroutineScope()
-    var loggedIn by remember { mutableStateOf(Trakt.isLoggedIn) }
+    val profile = Sync.profile
+    var loggedIn by remember(profile) { mutableStateOf(Trakt.isLoggedIn) }
+    val lastReport by Trakt.lastReport.collectAsState()
+    var bookmarks by remember { mutableStateOf(Store.getBoolean("trakt/bookmarks", true)) }
+    var syncing by remember { mutableStateOf(false) }
     var code by remember { mutableStateOf<Trakt.DeviceCode?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var scrobble by remember { mutableStateOf(Store.getBoolean("trakt/scrobble", true)) }
@@ -176,10 +190,31 @@ private fun TraktSection() {
             Text("Angemeldet als ${Trakt.userName ?: "Trakt-Nutzer"}", color = Color.White, fontSize = 15.sp, modifier = Modifier.weight(1f))
             FlimmerButton("Abmelden") { Trakt.logout(); loggedIn = false }
         }
-        SettingSwitch("Scrobbeln", "Was du schaust, wird an Trakt gemeldet und ab 80 % als gesehen markiert", scrobble) {
+        Gap(h = 6)
+        SettingSwitch("Scrobbeln", "Was du schaust, wird an Trakt gemeldet: ab 10 Minuten «Am schauen», ab 80 % gesehen", scrobble) {
             scrobble = it; Store.putBoolean("trakt/scrobble", it)
         }
-        Dim("Deine Trakt-Watchlist erscheint als Reihe auf der Startseite (Reiter «Alles»).", 13)
+        SettingSwitch("Meine Liste an Trakt", "«Geplant» landet in der Trakt-Watchlist, «Abgeschlossen» als gesehen", bookmarks) {
+            bookmarks = it; Store.putBoolean("trakt/bookmarks", it)
+        }
+        Gap(h = 6)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            FlimmerButton(if (syncing) "…" else "Trakt jetzt abgleichen") {
+                if (syncing) return@FlimmerButton
+                scope.launch {
+                    syncing = true
+                    Trakt.forceRefresh()
+                    val lib = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { try { Trakt.library() } catch (_: Throwable) { null } }
+                    message = if (lib == null) "Trakt nicht erreichbar" else
+                        "Abgeglichen: " + lib.lists.joinToString(", ") { "${it.first} ${it.second.size}" }
+                    syncing = false
+                }
+            }
+        }
+        message?.let { Gap(h = 6); Dim(it, 13) }
+        Gap(h = 6)
+        Dim("Letzte Meldung: ${lastReport ?: "noch keine in dieser Sitzung"}", 13)
+        Dim("Die Trakt-Anmeldung gilt pro Profil. Deine Watchlist erscheint auf der Startseite, die ganze Übersicht unter «Bibliothek».", 13)
     } else {
         val c = code
         if (c == null) {

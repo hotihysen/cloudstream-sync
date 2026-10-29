@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -68,6 +69,7 @@ sealed interface Screen {
     data class Detail(val apiName: String, val url: String) : Screen
     data object Search : Screen
     data object Settings : Screen
+    data object Library : Screen
 }
 
 /** Navigation und laufende Wiedergabe. */
@@ -140,8 +142,20 @@ fun main() {
             icon = icon,
             onPreviewKeyEvent = { e ->
                 if (e.type == KeyEventType.KeyDown && e.key == Key.Escape) {
-                    if (nav.session?.phase == PlaybackSession.Phase.Failed) nav.closeSession() else nav.back()
+                    when {
+                        ProfileUi.pin != null -> ProfileUi.pin?.let { r -> ProfileUi.pin = null; r.onResult(null, false) }
+                        ProfileUi.firstRun -> ProfileUi.finishFirstRun()
+                        ProfileUi.pickerOpen -> ProfileUi.pickerOpen = false
+                        nav.session?.phase == PlaybackSession.Phase.Failed -> nav.closeSession()
+                        else -> nav.back()
+                    }
                     true
+                } else if (e.type == KeyEventType.KeyDown && e.isCtrlPressed && e.key == Key.L) {
+                    nav.go(Screen.Library); true
+                } else if (e.type == KeyEventType.KeyDown && e.isCtrlPressed && e.key == Key.F) {
+                    nav.go(Screen.Search); true
+                } else if (e.type == KeyEventType.KeyDown && e.isCtrlPressed && e.key == Key.Comma) {
+                    nav.go(Screen.Settings); true
                 } else if (e.type == KeyEventType.KeyDown && e.key == Key.F11) {
                     windowState.placement = if (windowState.placement == WindowPlacement.Fullscreen) WindowPlacement.Floating else WindowPlacement.Fullscreen
                     true
@@ -165,22 +179,35 @@ fun App(nav: Nav) {
     }
     var startupDone by remember { mutableStateOf(false) }
     val startupText = "Erweiterungen werden geladen …"
+    // «Wer schaut?» beim Start, wenn es mehrere Profile oder eine PIN gibt
+    var picked by remember { mutableStateOf(!Profiles.needsPicker) }
+    val installed by Extensions.installed.collectAsState()
 
     LaunchedEffect(Unit) {
+        DeviceSetup.init()
         Catalog.register()
         Extensions.loadAll()
         startupDone = true
-        launch(Dispatchers.IO) { Sync.pull() }
+        launch(Dispatchers.IO) {
+            Sync.pull()
+            DeviceSetup.installMissing()
+            DeviceSetup.snapshot()
+        }
         launch(Dispatchers.IO) { Extensions.updateAll() }
         launch(Dispatchers.IO) { Updates.check() }
         // Stand der anderen Geräte regelmässig holen
         launch(Dispatchers.IO) {
             while (true) {
                 delay(120_000)
-                if (nav.session == null) Sync.pull()
+                if (nav.session == null) {
+                    Sync.pull()
+                    DeviceSetup.snapshot()
+                }
             }
         }
     }
+    // Installierte Erweiterungen geändert: an die anderen Geräte melden
+    LaunchedEffect(installed) { if (startupDone) DeviceSetup.snapshot() }
 
     Box(Modifier.fillMaxSize().background(FlimmerColors.Background)) {
         if (!startupDone) {
@@ -201,11 +228,18 @@ fun App(nav: Nav) {
                     is Screen.Detail -> DetailScreen(screen.apiName, screen.url, nav)
                     Screen.Search -> Box(Modifier.padding(top = 72.dp)) { SearchScreen(nav) }
                     Screen.Settings -> Box(Modifier.padding(top = 72.dp)) { SettingsScreen(nav) }
+                    Screen.Library -> Box(Modifier.padding(top = 72.dp)) { LibraryScreen(nav) }
                 }
                 TopBar(nav)
             }
         }
         nav.session?.let { PlaybackOverlay(it, nav) }
+        if (ProfileUi.firstRun) {
+            FirstRunScreen { ProfileUi.finishFirstRun(); picked = !Profiles.needsPicker }
+        } else if (!picked || ProfileUi.pickerOpen) {
+            ProfilePicker(canClose = picked) { picked = true; ProfileUi.pickerOpen = false }
+        }
+        PinOverlay()
     }
 }
 
@@ -232,8 +266,15 @@ private fun TopBar(nav: Nav) {
             TabText("‹ Zurück", false) { nav.back() }
         }
         update?.let { TabText("Update verfügbar", false) { openUrl(Updates.DOWNLOAD_PAGE) } }
+        TabText("Bibliothek", screen is Screen.Library) { nav.go(Screen.Library) }
         TabText("Suche", screen is Screen.Search) { nav.go(Screen.Search) }
         TabText("Einstellungen", screen is Screen.Settings) { nav.go(Screen.Settings) }
+        val profiles by Profiles.list.collectAsState()
+        Sync.version.collectAsState().value
+        if (profiles.size > 1 || Profiles.current.lockPin != null) {
+            Gap(w = 10)
+            ProfileAvatar(Profiles.current, 32) { if (nav.session == null) ProfileUi.pickerOpen = true }
+        }
     }
 }
 
