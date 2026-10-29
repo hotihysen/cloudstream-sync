@@ -1,5 +1,6 @@
 package com.lagradost.cloudstream3.flimmer
 
+import com.lagradost.cloudstream3.utils.Coroutines.ioSafe
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -69,7 +70,7 @@ fun flimmerTraktGroup(): Preference.PreferenceGroup {
                 onClick = {
                     AccountManager.traktApi.forceRefresh()
                     com.lagradost.cloudstream3.CommonActivity.showToast("Trakt wird synchronisiert …", android.widget.Toast.LENGTH_SHORT)
-                    com.lagradost.cloudstream3.utils.Coroutines.ioSafe {
+                    Unit.ioSafe {
                         val repo = AccountManager.syncApis.firstOrNull { it.idPrefix == AccountManager.traktApi.idPrefix }
                         val ok = repo?.library()?.isSuccess == true
                         AccountManager.traktApi.requireLibraryRefresh = true

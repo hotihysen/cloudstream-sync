@@ -1,5 +1,6 @@
 package com.lagradost.cloudstream3.ui.library
 
+import com.lagradost.cloudstream3.utils.Coroutines.ioSafe
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
@@ -139,7 +140,7 @@ class LibraryFragment : BaseFragment<FragmentLibraryBinding>(
             v.animate().rotationBy(360f).setDuration(600).start()
             com.lagradost.cloudstream3.syncproviders.AccountManager.traktApi.forceRefresh()
             com.lagradost.cloudstream3.CommonActivity.showToast("Wird synchronisiert …", android.widget.Toast.LENGTH_SHORT)
-            com.lagradost.cloudstream3.utils.Coroutines.ioSafe {
+            Unit.ioSafe {
                 com.lagradost.cloudstream3.utils.CloudSync.pull(notify = true, force = true)
             }
             libraryViewModel.reloadPages(true)
