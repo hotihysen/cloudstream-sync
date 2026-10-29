@@ -2177,6 +2177,13 @@ class ResultViewModel2 : ViewModel() {
 
         if (updateEpisodes)
             postEpisodes(loadResponse, mainId, updateFillers)
+
+        // Flimmer: bei Trakt Gesehenes hier als gesehen markieren
+        if (updateEpisodes) {
+            com.lagradost.cloudstream3.flimmer.FlimmerTrakt.importWatched(
+                loadResponse, mainId, currentEpisodes.values.flatten()
+            ) { reloadEpisodes() }
+        }
     }
 
     private suspend fun postEpisodes(

@@ -134,3 +134,77 @@ fun flimmerStreamGroup(): Preference.PreferenceGroup {
         )
     )
 }
+
+/** Einstellungsgruppe «Profil»: 4-stellige PIN für das aktuelle Profil (funktioniert auch auf dem Fernseher) */
+@Composable
+fun flimmerProfileGroup(): Preference.PreferenceGroup {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val current = com.lagradost.cloudstream3.utils.DataStoreHelper.getCurrentAccount()
+        ?: com.lagradost.cloudstream3.utils.DataStoreHelper.getDefaultAccount(ctx)
+    var hasPin by remember(current.keyIndex) { mutableStateOf(current.lockPin != null) }
+
+    fun save(pin: String?) {
+        val acc = (com.lagradost.cloudstream3.utils.DataStoreHelper.getCurrentAccount() ?: current).copy(lockPin = pin)
+        val list = com.lagradost.cloudstream3.utils.DataStoreHelper.accounts.filter { it.keyIndex != acc.keyIndex } + acc
+        com.lagradost.cloudstream3.utils.DataStoreHelper.accounts = list.sortedBy { it.keyIndex }.toTypedArray()
+        hasPin = pin != null
+    }
+
+    val items = mutableListOf<Preference.PreferenceItem<out Any?, out Any?>>()
+    if (!hasPin) {
+        items += Preference.PreferenceItem.TextPreference(
+            title = "PIN festlegen",
+            subtitle = "Profil «${current.name}» mit einer 4-stelligen PIN schützen. Sie wird beim Start und beim Wechsel ins Profil abgefragt",
+            icon = painterResource(R.drawable.video_locked),
+            onClick = {
+                com.lagradost.cloudstream3.ui.account.AccountHelper.showPinInputDialog(ctx, null, true) { pin ->
+                    if (pin != null && pin.length == 4) {
+                        save(pin)
+                        com.lagradost.cloudstream3.CommonActivity.showToast("PIN gesetzt", android.widget.Toast.LENGTH_SHORT)
+                    }
+                }
+            },
+        )
+    } else {
+        items += Preference.PreferenceItem.TextPreference(
+            title = "PIN ändern",
+            subtitle = "Zuerst die aktuelle PIN, dann die neue eingeben",
+            icon = painterResource(R.drawable.video_locked),
+            onClick = {
+                val currentPin = com.lagradost.cloudstream3.utils.DataStoreHelper.getCurrentAccount()?.lockPin
+                com.lagradost.cloudstream3.ui.account.AccountHelper.showPinInputDialog(ctx, currentPin, true) { old ->
+                    if (old == null || old != currentPin) return@showPinInputDialog
+                    com.lagradost.cloudstream3.ui.account.AccountHelper.showPinInputDialog(ctx, null, true) { pin ->
+                        if (pin != null && pin.length == 4) {
+                            save(pin)
+                            com.lagradost.cloudstream3.CommonActivity.showToast("PIN geändert", android.widget.Toast.LENGTH_SHORT)
+                        }
+                    }
+                }
+            },
+        )
+        items += Preference.PreferenceItem.TextPreference(
+            title = "PIN entfernen",
+            subtitle = "Profil «${current.name}» wieder ohne PIN öffnen",
+            icon = painterResource(R.drawable.video_unlocked),
+            onClick = {
+                val currentPin = com.lagradost.cloudstream3.utils.DataStoreHelper.getCurrentAccount()?.lockPin
+                com.lagradost.cloudstream3.ui.account.AccountHelper.showPinInputDialog(ctx, currentPin, true) { old ->
+                    if (old != null && old == currentPin) {
+                        save(null)
+                        com.lagradost.cloudstream3.CommonActivity.showToast("PIN entfernt", android.widget.Toast.LENGTH_SHORT)
+                    }
+                }
+            },
+        )
+    }
+    items += Preference.PreferenceItem.InfoPreference(
+        title = "Die PIN gilt für dieses Profil auf allen Geräten (über den Gist-Sync). " +
+                "Die Sperre mit Fingerabdruck unter «Sicherheit» schützt dagegen die ganze App und nur auf diesem Gerät."
+    )
+    return Preference.PreferenceGroup(
+        title = "Profil «${current.name}»",
+        preferenceItems = items.toList(),
+    )
+}
+

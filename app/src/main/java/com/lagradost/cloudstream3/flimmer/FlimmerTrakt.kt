@@ -14,6 +14,8 @@ import com.lagradost.cloudstream3.ui.WatchType
 import com.lagradost.cloudstream3.ui.result.ResultEpisode
 import com.lagradost.cloudstream3.ui.result.getId
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
+import com.lagradost.cloudstream3.ui.result.VideoWatchState
+import com.lagradost.cloudstream3.utils.DataStoreHelper
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -308,6 +310,99 @@ object FlimmerTrakt {
                 AccountManager.traktApi.requireLibraryRefresh = true
             } catch (e: Throwable) {
                 Log.w(TAG, "markWatched", e)
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ Gesehenes von Trakt übernehmen
+
+    @kotlinx.serialization.Serializable
+    data class SearchHit(
+        @com.fasterxml.jackson.annotation.JsonProperty("show") @kotlinx.serialization.SerialName("show") val show: TraktApi.Media? = null,
+        @com.fasterxml.jackson.annotation.JsonProperty("movie") @kotlinx.serialization.SerialName("movie") val movie: TraktApi.Media? = null,
+    )
+
+    @kotlinx.serialization.Serializable
+    data class ProgressEpisode(
+        @com.fasterxml.jackson.annotation.JsonProperty("number") @kotlinx.serialization.SerialName("number") val number: Int = 0,
+        @com.fasterxml.jackson.annotation.JsonProperty("completed") @kotlinx.serialization.SerialName("completed") val completed: Boolean = false,
+    )
+
+    @kotlinx.serialization.Serializable
+    data class ProgressSeason(
+        @com.fasterxml.jackson.annotation.JsonProperty("number") @kotlinx.serialization.SerialName("number") val number: Int = 0,
+        @com.fasterxml.jackson.annotation.JsonProperty("episodes") @kotlinx.serialization.SerialName("episodes") val episodes: List<ProgressEpisode> = emptyList(),
+    )
+
+    @kotlinx.serialization.Serializable
+    data class ShowProgress(
+        @com.fasterxml.jackson.annotation.JsonProperty("seasons") @kotlinx.serialization.SerialName("seasons") val seasons: List<ProgressSeason> = emptyList(),
+    )
+
+    /** TMDB/IMDb-ID → Trakt-ID (zwischengespeichert) */
+    private val traktIdCache = ConcurrentHashMap<String, Int>()
+
+    private suspend fun traktIdOf(tid: TraktApi.Companion.TraktId, token: String): Int? {
+        if (tid.idType == "trakt") return tid.value.toIntOrNull()
+        val key = tid.toString()
+        traktIdCache[key]?.let { return it }
+        val type = if (tid.isShow) "show" else "movie"
+        val res = com.lagradost.cloudstream3.app.get("$API/search/${tid.idType}/${tid.value}?type=$type", headers = headers(token))
+        if (!res.isSuccessful) return null
+        val hit = parseJson<List<SearchHit>>(res.text).firstOrNull()
+        val id = (if (tid.isShow) hit?.show else hit?.movie)?.ids?.trakt ?: return null
+        traktIdCache[key] = id
+        return id
+    }
+
+    /**
+     * Beim Öffnen eines Titels: Was bei Trakt als gesehen gilt, auch in Flimmer als gesehen markieren.
+     * Entmarkiert wird dabei nichts (Flimmer kann weiter sein als Trakt). An Trakt geht dabei nichts zurück.
+     */
+    fun importWatched(response: LoadResponse, mainId: Int, episodes: List<ResultEpisode>, onChanged: () -> Unit) {
+        if (!isConfigured || !isLoggedIn()) return
+        val syncId = response.syncData[AccountManager.traktApi.idPrefix] ?: return
+        val tid = TraktApi.Companion.TraktId.parse(syncId) ?: return
+        scope.launch {
+            try {
+                val t = token() ?: return@launch
+                val traktId = traktIdOf(tid, t) ?: return@launch
+                var changed = 0
+                if (tid.isShow) {
+                    val res = com.lagradost.cloudstream3.app.get(
+                        "$API/shows/$traktId/progress/watched?hidden=false&specials=false&count_specials=false",
+                        headers = headers(t)
+                    )
+                    if (!res.isSuccessful) return@launch
+                    val done = parseJson<ShowProgress>(res.text).seasons.flatMap { s ->
+                        s.episodes.filter { it.completed }.map { s.number to it.number }
+                    }.toSet()
+                    if (done.isEmpty()) return@launch
+                    for (ep in episodes) {
+                        val key = (ep.season ?: 1) to ep.episode
+                        if (key in done && DataStoreHelper.getVideoWatchState(ep.id) != VideoWatchState.Watched) {
+                            DataStoreHelper.setVideoWatchState(ep.id, VideoWatchState.Watched)
+                            changed++
+                        }
+                    }
+                } else {
+                    val res = com.lagradost.cloudstream3.app.get("$API/sync/history/movies/$traktId?limit=1", headers = headers(t))
+                    if (!res.isSuccessful || res.text.trim().length <= 2) return@launch // leere Liste: nicht gesehen
+                    val ids = (episodes.map { it.id } + mainId).distinct()
+                    for (id in ids) {
+                        if (DataStoreHelper.getVideoWatchState(id) != VideoWatchState.Watched) {
+                            DataStoreHelper.setVideoWatchState(id, VideoWatchState.Watched)
+                            changed++
+                        }
+                    }
+                }
+                if (changed > 0) {
+                    val time = java.text.SimpleDateFormat("HH:mm", java.util.Locale.GERMAN).format(java.util.Date())
+                    lastReport = "$time · $changed als gesehen von Trakt übernommen («${response.name}»)"
+                    com.lagradost.cloudstream3.utils.Coroutines.runOnMainThread { onChanged() }
+                }
+            } catch (e: Throwable) {
+                Log.w(TAG, "importWatched", e)
             }
         }
     }

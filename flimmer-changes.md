@@ -1,11 +1,9 @@
-Flimmer 17.7
+Flimmer 17.8
 
-Neues Gerät in einem Schritt einrichten
-- Beim ersten Start: «Von einem anderen Gerät übernehmen». Gist-Token eingeben, Flimmer holt Profile mit PIN, Repos, Erweiterungen (werden gleich installiert), wichtige Einstellungen sowie Weiterschauen und Merklisten
-- Für bestehende Geräte: Einstellungen, Allgemein, Cloud-Sync, «Alles von anderen Geräten übernehmen»
+Trakt → Flimmer
+- Beim Öffnen einer Serie oder eines Films übernimmt Flimmer, was bei Trakt als gesehen gilt (Häkchen bei den Folgen). Bisher ging es nur in die andere Richtung
+- Entmarkiert wird dabei nichts; unter «Letzte Meldung an Trakt» steht, wie viele Folgen übernommen wurden
 
-Laufender Abgleich
-- Neue Repos und installierte Erweiterungen erscheinen auch auf den anderen Geräten (entfernt wird über den Sync nichts)
-- Wichtige Einstellungen gehen mit: Sprache, Design und Farbe, Startseite-Anzeige, Player (Doppeltippen, Spulzeit, Autoplay, Qualität), Untertitel-Stil und -Sprache, Stream-Sprache, Trakt-Optionen
-- Gerätespezifisches bleibt auf dem Gerät: Layout Handy/TV, Download-Ordner, Helligkeit, Puffer, Akku
-- Die Trakt-Anmeldung wird nicht übertragen (pro Profil und Gerät einmal anmelden)
+Profil-PIN
+- Einstellungen, Allgemein, ganz oben «Profil»: 4-stellige PIN festlegen, ändern oder entfernen, auch auf dem Fernseher
+- Die PIN wird beim Start und beim Wechsel ins Profil abgefragt und gilt über den Gist-Sync auf allen Geräten

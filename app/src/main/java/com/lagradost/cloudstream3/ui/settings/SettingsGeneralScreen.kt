@@ -226,10 +226,12 @@ object SettingsGeneralScreen : SearchableSettings {
             )
         )
 
+        val profileGroup = com.lagradost.cloudstream3.flimmer.flimmerProfileGroup()
         val traktGroup = flimmerTraktGroup()
         val streamGroup = flimmerStreamGroup()
 
         return persistentListOf(
+            profileGroup,
             cloudSyncGroup,
             traktGroup,
             streamGroup,
