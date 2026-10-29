@@ -180,7 +180,35 @@ object DataStoreHelper {
     }
 
     const val TAG = "data_store_helper"
-    var accounts by PreferenceDelegate("$TAG/account", arrayOf<Account>())
+    const val PROFILES_STORAGE_KEY = "$TAG/account"
+    private var storedAccounts by PreferenceDelegate(PROFILES_STORAGE_KEY, arrayOf<Account>())
+
+    /** Profile; Änderungen gehen über den Gist-Sync auf die anderen Geräte */
+    var accounts: Array<Account>
+        get() = storedAccounts
+        set(value) {
+            storedAccounts = value
+            CloudSync.onProfiles()
+        }
+
+    /**
+     * Profile von einem anderen Gerät übernehmen: gleiche Nummer wird aktualisiert, neue kommen dazu,
+     * keines wird gelöscht.
+     */
+    fun mergeSyncedProfiles(json: String) {
+        try {
+            val remote = AppUtils.parseJson<Array<Account>>(json)
+            val merged = storedAccounts.associateBy { it.keyIndex }.toMutableMap()
+            remote.forEach { merged[it.keyIndex] = it }
+            val list = merged.values.sortedBy { it.keyIndex }.toTypedArray()
+            if (!list.contentEquals(storedAccounts)) {
+                storedAccounts = list
+                _selectedAccountNumberFlow.value += 1
+            }
+        } catch (t: Throwable) {
+            com.lagradost.cloudstream3.mvvm.logError(t)
+        }
+    }
     var selectedKeyIndex by PreferenceDelegate("$TAG/account_key_index", 0)
     val currentAccount: String get() = selectedKeyIndex.toString()
 
@@ -218,6 +246,8 @@ object DataStoreHelper {
             MainActivity.reloadHomeEvent(true)
         }
         _selectedAccountNumberFlow.value += 1
+        // Flimmer: Stand des neuen Profils von den anderen Geräten holen
+        CloudSync.pullInBackground()
     }
 
     fun getDefaultAccount(context: Context): Account {
@@ -542,6 +572,7 @@ object DataStoreHelper {
         AccountManager.localListApi.requireLibraryRefresh = true
         removeKey("$currentAccount/$RESULT_WATCH_STATE", id.toString())
         removeKey("$currentAccount/$RESULT_WATCH_STATE_DATA", id.toString())
+        CloudSync.onBookmark(id)
     }
 
     fun getAllResumeStateIds(): List<Int>? {
@@ -632,6 +663,7 @@ object DataStoreHelper {
         if (id == null) return
         setKey("$currentAccount/$RESULT_WATCH_STATE_DATA", id.toString(), data)
         AccountManager.localListApi.requireLibraryRefresh = true
+        CloudSync.onBookmark(id)
     }
 
     fun getBookmarkedData(id: Int?): BookmarkedData? {
@@ -655,6 +687,7 @@ object DataStoreHelper {
         if (id == null) return
         AccountManager.localListApi.requireLibraryRefresh = true
         removeKey("$currentAccount/$RESULT_SUBSCRIBED_STATE_DATA", id.toString())
+        CloudSync.onSubscription(id)
     }
 
     /**
@@ -667,12 +700,14 @@ object DataStoreHelper {
             lastSeenEpisodeCount = episodeResponse.getLatestEpisodes(),
         )
         setKey("$currentAccount/$RESULT_SUBSCRIBED_STATE_DATA", id.toString(), newData)
+        CloudSync.onSubscription(id)
     }
 
     fun setSubscribedData(id: Int?, data: SubscribedData) {
         if (id == null) return
         setKey("$currentAccount/$RESULT_SUBSCRIBED_STATE_DATA", id.toString(), data)
         AccountManager.localListApi.requireLibraryRefresh = true
+        CloudSync.onSubscription(id)
     }
 
     fun getSubscribedData(id: Int?): SubscribedData? {
@@ -690,12 +725,14 @@ object DataStoreHelper {
         if (id == null) return
         AccountManager.localListApi.requireLibraryRefresh = true
         removeKey("$currentAccount/$RESULT_FAVORITES_STATE_DATA", id.toString())
+        CloudSync.onFavorite(id)
     }
 
     fun setFavoritesData(id: Int?, data: FavoritesData) {
         if (id == null) return
         setKey("$currentAccount/$RESULT_FAVORITES_STATE_DATA", id.toString(), data)
         AccountManager.localListApi.requireLibraryRefresh = true
+        CloudSync.onFavorite(id)
     }
 
     fun getFavoritesData(id: Int?): FavoritesData? {
@@ -807,6 +844,7 @@ object DataStoreHelper {
             deleteBookmarkedData(id)
         } else {
             setKey("$currentAccount/$RESULT_WATCH_STATE", id.toString(), status)
+            CloudSync.onBookmark(id)
         }
     }
 

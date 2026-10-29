@@ -76,6 +76,12 @@ object CloudSync {
     private const val T_RESUME = "resume"  // Eintrag in «Weiterschauen» (pro Serie/Film)
     private const val T_HEADER = "header"  // Titel, Poster, URL, Anbieter (für die Kachel)
     private const val T_WATCH = "ws"       // Gesehen-Markierung pro Episode
+    private const val T_BOOKMARK = "bm"    // Lesezeichen-Status (Geplant, Am Schauen, …) pro Titel
+    private const val T_BOOKMARK_DATA = "bmd" // Kachel-Daten zum Lesezeichen
+    private const val T_FAVORITE = "fav"   // Favoriten
+    private const val T_SUBSCRIPTION = "sub" // Abos (neue Folgen)
+    private const val T_PROFILES = "prof"  // Profile mit Namen, Bild und PIN (für alle Profile gemeinsam)
+    private const val PROFILES_KEY = "$T_PROFILES/0"
 
     @Serializable
     data class Record(
@@ -175,6 +181,10 @@ object CloudSync {
     private fun prefs(ctx: Context): SharedPreferences =
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
+    /** Schlüssel für die PIN im Gist: aus Gist-ID bzw. Server-Adresse (auf allen Geräten gleich) */
+    private fun cryptKey(ctx: Context): String =
+        if (mode(ctx) == MODE_GIST) "gist:" + (prefs(ctx).getString(KEY_GIST_ID, null) ?: "") else "server:" + baseUrl(ctx)
+
     fun deviceId(ctx: Context): String {
         val p = prefs(ctx)
         return p.getString(KEY_DEVICE, null) ?: UUID.randomUUID().toString().also {
@@ -240,6 +250,11 @@ object CloudSync {
             T_RESUME -> "$acc/$RESULT_RESUME_WATCHING/$id"
             T_WATCH -> "$acc/$VIDEO_WATCH_STATE/$id"
             T_HEADER -> "$DOWNLOAD_HEADER_CACHE/$id"
+            T_BOOKMARK -> "$acc/$RESULT_WATCH_STATE/$id"
+            T_BOOKMARK_DATA -> "$acc/$RESULT_WATCH_STATE_DATA/$id"
+            T_FAVORITE -> "$acc/$RESULT_FAVORITES_STATE_DATA/$id"
+            T_SUBSCRIPTION -> "$acc/$RESULT_SUBSCRIBED_STATE_DATA/$id"
+            T_PROFILES -> DataStoreHelper.PROFILES_STORAGE_KEY
             else -> null
         }
     }
@@ -247,6 +262,13 @@ object CloudSync {
     // ---------------------------------------------------------------- Lokale Änderungen
 
     fun onViewPos(id: Int?) = markDirty(T_POS, id)
+    fun onBookmark(id: Int?) {
+        markDirty(T_BOOKMARK, id)
+        markDirty(T_BOOKMARK_DATA, id)
+    }
+    fun onFavorite(id: Int?) = markDirty(T_FAVORITE, id)
+    fun onSubscription(id: Int?) = markDirty(T_SUBSCRIPTION, id)
+    fun onProfiles() = markDirty(T_PROFILES, 0)
     fun onWatchState(id: Int?) = markDirty(T_WATCH, id)
     fun onResume(parentId: Int?) {
         markDirty(T_RESUME, parentId)
@@ -302,7 +324,8 @@ object CloudSync {
         val store = ctx.getSharedPrefs()
         val records = pending.mapNotNull { key ->
             val path = storagePath(key) ?: return@mapNotNull null
-            val raw = store.getString(path, null)
+            var raw = store.getString(path, null)
+            if (key == PROFILES_KEY && raw != null) raw = ProfileCrypt.protect(raw, cryptKey(ctx))
             Record(k = key, v = raw, t = p.getLong(TIME_PREFIX + key, System.currentTimeMillis()), d = raw == null)
         }
 
@@ -408,6 +431,16 @@ object CloudSync {
                 val path = storagePath(r.k) ?: continue
                 val localT = p.getLong(TIME_PREFIX + r.k, 0)
                 if (r.t <= localT) continue // lokal gleich alt oder neuer
+                if (r.k == PROFILES_KEY) {
+                    // Profile nie löschen, nur ergänzen bzw. aktualisieren
+                    r.v?.let { v -> DataStoreHelper.mergeSyncedProfiles(ProfileCrypt.reveal(v, cryptKey(ctx))) }
+                    times.putLong(TIME_PREFIX + r.k, r.t)
+                    applied++
+                    continue
+                }
+                if (r.k.startsWith("$T_BOOKMARK") || r.k.startsWith("$T_FAVORITE/") || r.k.startsWith("$T_SUBSCRIPTION/")) {
+                    com.lagradost.cloudstream3.syncproviders.AccountManager.localListApi.requireLibraryRefresh = true
+                }
                 if (r.d || r.v == null) remove(path) else putString(path, r.v)
                 times.putLong(TIME_PREFIX + r.k, r.t)
                 applied++
@@ -521,7 +554,9 @@ object CloudSync {
 
         val newest = HashMap<String, Record>()
         for ((name, f) in gist.files) {
-            if (name == own || !isProfileFile(name)) continue
+            // Profil-Liste steht in den Dateien aller Profile; sonst nur das eigene Profil lesen
+            val otherProfile = name.startsWith("device-") && name.endsWith(".json") && !isProfileFile(name)
+            if (name == own || (!isProfileFile(name) && !otherProfile)) continue
             val text = if (!f.truncated && f.content != null) {
                 f.content
             } else {
@@ -537,6 +572,7 @@ object CloudSync {
                 continue
             }
             for (r in device.records.values) {
+                if (otherProfile && r.k != PROFILES_KEY) continue
                 val cur = newest[r.k]
                 if (cur == null || r.t > cur.t) newest[r.k] = r
             }
@@ -554,6 +590,13 @@ object CloudSync {
         if (!isEnabled()) return
         foregroundJob?.cancel()
         foregroundJob = scope.launch {
+            // Flimmer 17.6: Lesezeichen und Profile einmalig hochladen
+            context?.let { ctx ->
+                val flag = "full_v2_${DataStoreHelper.currentAccount}"
+                if (!prefs(ctx).getBoolean(flag, false)) {
+                    if (fullSync() != null) prefs(ctx).edit { putBoolean(flag, true) }
+                }
+            }
             pull(notify = true, force = true)
             while (true) {
                 delay(FOREGROUND_PULL_MS)
@@ -586,6 +629,11 @@ object CloudSync {
         collect("$acc/$VIDEO_POS_DUR", T_POS)
         collect("$acc/$RESULT_RESUME_WATCHING", T_RESUME)
         collect("$acc/$VIDEO_WATCH_STATE", T_WATCH)
+        collect("$acc/$RESULT_WATCH_STATE", T_BOOKMARK)
+        collect("$acc/$RESULT_WATCH_STATE_DATA", T_BOOKMARK_DATA)
+        collect("$acc/$RESULT_FAVORITES_STATE_DATA", T_FAVORITE)
+        collect("$acc/$RESULT_SUBSCRIBED_STATE_DATA", T_SUBSCRIPTION)
+        if (all.contains(DataStoreHelper.PROFILES_STORAGE_KEY)) keys.add(PROFILES_KEY)
         // Kacheln nur für Titel, die auch in «Weiterschauen» stehen
         keys.filter { it.startsWith("$T_RESUME/") }
             .forEach { keys.add(T_HEADER + "/" + it.substringAfter('/')) }

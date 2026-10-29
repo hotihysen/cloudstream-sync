@@ -1,9 +1,10 @@
-Flimmer 17.5
+Flimmer 17.6
 
-Fernseher
-- Bibliothek mit den neuen Kacheln (Typ, Bewertung, Fortschritt, «Als Nächstes: S2 · F5») und dem Filter Alles, Serien, Filme, Anime
-- Mit der Fernbedienung: von den Reitern nach unten zum Filter, von dort zu den Kacheln
+Profile über den Gist-Sync
+- Profile (Name, Bild, PIN) werden zwischen Handy, Fernseher und weiteren Geräten abgeglichen. Neue Profile erscheinen auf allen Geräten; gelöscht wird über den Sync nie (ein Profil auf jedem Gerät selbst löschen)
+- Die PIN steht verschlüsselt im Gist
+- Pro Profil werden jetzt auch abgeglichen: Lesezeichen (Geplant, Am Schauen, Abgeschlossen, …), Favoriten und Abos, zusätzlich zu Weiterschauen und Gesehen-Markierungen
+- Beim ersten Start dieser Version lädt jedes Gerät seine vorhandenen Lesezeichen und Profile einmal hoch
 
-Trakt jetzt synchronisieren
-- In der Bibliothek oben das Symbol mit dem Kreispfeil: holt Trakt-Listen und Fortschritt sofort frisch (und den Weiterschauen-Stand der anderen Geräte)
-- Auch unter Einstellungen, Trakt-Optionen, «Jetzt synchronisieren»
+Trakt pro Profil
+- Jedes Profil kann ein eigenes Trakt-Konto haben (Einstellungen, Trakt-Optionen zeigt, für welches Profil sie gelten). Die Trakt-Anmeldung bleibt pro Gerät

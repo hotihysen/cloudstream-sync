@@ -27,14 +27,14 @@ fun flimmerTraktGroup(): Preference.PreferenceGroup {
     var bookmarks by remember { mutableStateOf(FlimmerTrakt.bookmarksEnabled) }
 
     return Preference.PreferenceGroup(
-        title = "Trakt-Optionen",
+        title = "Trakt-Optionen · Profil «${com.lagradost.cloudstream3.utils.DataStoreHelper.getCurrentAccount()?.name ?: "Standard"}»",
         preferenceItems = persistentListOf(
             Preference.PreferenceItem.TextPreference(
                 title = if (loggedIn) "Trakt verbunden" else "Trakt nicht verbunden",
                 subtitle = when {
                     !FlimmerTrakt.isConfigured -> "Trakt-Client-ID fehlt im Build"
                     loggedIn -> "Angemeldet als ${user ?: "Trakt-Nutzer"}. Bibliothek: Reiter «Bibliothek», oben «Trakt» wählen."
-                    else -> "Hier tippen und mit Code auf trakt.tv/activate anmelden."
+                    else -> "Hier tippen und mit Code auf trakt.tv/activate anmelden. Jedes Profil kann ein eigenes Trakt-Konto haben."
                 },
                 icon = painterResource(R.drawable.ic_trakt),
                 enabled = FlimmerTrakt.isConfigured,
