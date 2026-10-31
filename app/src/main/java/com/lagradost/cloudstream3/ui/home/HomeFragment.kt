@@ -215,10 +215,10 @@ class HomeFragment : BaseFragment<FragmentHomeBinding>(
 
 
             // Span settings
-            binding.homeExpandedRecycler.spanCount = context.getSpanCount(item.isHorizontalImages)
+            binding.homeExpandedRecycler.spanCount = context.getSpanCount(item.isHorizontalImages && !com.lagradost.cloudstream3.flimmer.FlimmerKatalog.isKatalog(item.list.firstOrNull()?.apiName))
             binding.homeExpandedRecycler.setRecycledViewPool(SearchAdapter.sharedPool)
             binding.homeExpandedRecycler.adapter =
-                SearchAdapter(binding.homeExpandedRecycler,item.isHorizontalImages) { callback ->
+                SearchAdapter(binding.homeExpandedRecycler, item.isHorizontalImages && !com.lagradost.cloudstream3.flimmer.FlimmerKatalog.isKatalog(item.list.firstOrNull()?.apiName)) { callback ->
                     handleSearchClickCallback(callback)
                     if (callback.action == SEARCH_ACTION_LOAD || callback.action == SEARCH_ACTION_PLAY_FILE) {
                         bottomSheetDialogBuilder.ownHide() // we hide here because we want to resume it later
@@ -258,7 +258,7 @@ class HomeFragment : BaseFragment<FragmentHomeBinding>(
             })
 
             val spanListener = Runnable {
-                binding.homeExpandedRecycler.spanCount = context.getSpanCount(item.isHorizontalImages)
+                binding.homeExpandedRecycler.spanCount = context.getSpanCount(item.isHorizontalImages && !com.lagradost.cloudstream3.flimmer.FlimmerKatalog.isKatalog(item.list.firstOrNull()?.apiName))
                 // We want to rebind everything to update the UI, however we also want to avoid
                 // any animations ect, this is the easiest way to do this, and the most correct
                 @SuppressLint("NotifyDataSetChanged")

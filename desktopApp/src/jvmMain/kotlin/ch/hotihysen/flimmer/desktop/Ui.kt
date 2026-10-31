@@ -141,6 +141,8 @@ fun PosterCard(
     subtitle: String? = null,
     progress: Float? = null,
     width: Int = 150,
+    /** Titel unter dem Poster (bei Katalog-Postern aus, der Titel steht im Bild) */
+    showTitle: Boolean = true,
     onClick: () -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
@@ -173,10 +175,12 @@ fun PosterCard(
                 }
             }
         }
-        Spacer(Modifier.height(6.dp))
-        Text(title, color = Color.White, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (subtitle != null) {
-            Text(subtitle, color = FlimmerColors.TextDim, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (showTitle || poster == null) {
+            Spacer(Modifier.height(6.dp))
+            Text(title, color = Color.White, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (subtitle != null) {
+                Text(subtitle, color = FlimmerColors.TextDim, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
         }
     }
 }

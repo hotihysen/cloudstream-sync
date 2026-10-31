@@ -5,6 +5,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import androidx.core.view.isVisible
 import androidx.preference.PreferenceManager
 import androidx.viewbinding.ViewBinding
 import com.lagradost.cloudstream3.R
@@ -127,7 +128,24 @@ open class HomeChildItemAdapter(
             updateCachedPosterSize()
         }
 
+    /** Flimmer: grosse Hochformat-Kacheln (erste Reihe, wie bei Netflix) */
+    var isBig: Boolean = false
+        set(value) {
+            field = value
+            updateCachedPosterSize()
+        }
+
+    /** Flimmer: kein Titel unter dem Poster, der Titel steht im Bild */
+    var hideTitles: Boolean = false
+
     private fun updateCachedPosterSize() {
+        if (isBig) {
+            // Fernseher etwas kleiner, damit die Reihe nicht den halben Bildschirm füllt
+            val f = if (isLayout(TV or EMULATOR)) 1.3f else 1.5f
+            setWidth = (minPosterSize * f).toInt()
+            setHeight = (maxPosterSize * f).toInt()
+            return
+        }
         setWidth = if (!isHorizontal) {
             minPosterSize
         } else {
@@ -224,6 +242,11 @@ open class HomeChildItemAdapter(
             nextFocusUp,
             nextFocusDown
         )
+
+        if (hideTitles && !item.posterUrl.isNullOrBlank()) {
+            holder.itemView.findViewById<View>(R.id.imageText)?.isVisible = false
+            holder.itemView.findViewById<View>(R.id.title_shadow)?.isVisible = false
+        }
 
         holder.itemView.tag = position
     }

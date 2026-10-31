@@ -105,13 +105,13 @@ open class ParentItemAdapter(
                     nextFocusUp = homeChildRecyclerview.nextFocusUpId,
                     nextFocusDown = homeChildRecyclerview.nextFocusDownId,
                 ).apply {
-                    isHorizontal = info.isHorizontalImages
+                    applyFlimmerStyle(info)
                     hasNext = item.hasNext
                     submitList(item.list.list)
                 }
             } else {
                 currentAdapter.apply {
-                    isHorizontal = info.isHorizontalImages
+                    applyFlimmerStyle(info)
                     hasNext = item.hasNext
                     this.clickCallback = this@ParentItemAdapter.clickCallback
                     nextFocusUp = homeChildRecyclerview.nextFocusUpId
@@ -191,3 +191,15 @@ open class ParentItemAdapter(
 inline fun <reified T> Bundle.getSafeParcelable(key: String): T? =
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) getParcelable(key)
     else getParcelable(key, T::class.java)
+
+/**
+ * Flimmer: Reihen des Katalogs wie bei Netflix. Die erste Reihe (als Querformat gemeldet) wird zu grossen
+ * Hochformat-Postern, weil die Poster sonst stark abgeschnitten werden; der Titel steht im Bild.
+ */
+internal fun HomeChildItemAdapter.applyFlimmerStyle(info: com.lagradost.cloudstream3.HomePageList) {
+    val katalog = com.lagradost.cloudstream3.flimmer.FlimmerKatalog.isKatalog(info.list.firstOrNull()?.apiName)
+    val big = katalog && info.isHorizontalImages
+    isHorizontal = info.isHorizontalImages && !big
+    isBig = big
+    hideTitles = katalog
+}

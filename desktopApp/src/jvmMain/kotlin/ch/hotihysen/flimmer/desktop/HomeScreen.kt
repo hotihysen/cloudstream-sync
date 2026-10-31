@@ -111,8 +111,12 @@ fun HomeScreen(mode: FlimmerKatalog.Mode, nav: Nav) {
         val ordered = rows.keys.sorted()
         items(ordered, key = { "row$it" }) { index ->
             val row = rows[index] ?: return@items
+            // Wie bei Netflix: erste Reihe mit grossen Postern, sonst mittlere; Titel steht im Bild
+            val big = row.isHorizontalImages
             ShelfRow(row.name, row.list.distinctBy { it.url }, key = { it.url }) { item ->
-                PosterCard(item.name, item.posterUrl, item.yearText()) { nav.go(Screen.Detail(item.apiName, item.url)) }
+                PosterCard(item.name, item.posterUrl, item.yearText(), width = if (big) 250 else 175, showTitle = false) {
+                    nav.go(Screen.Detail(item.apiName, item.url))
+                }
             }
         }
         if (rows.isEmpty()) {

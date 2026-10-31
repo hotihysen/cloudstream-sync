@@ -209,7 +209,7 @@ fun DetailScreen(apiName: String, url: String, nav: Nav) {
         l.recommendations?.takeIf { it.isNotEmpty() }?.let { recs ->
             item(key = "recs") {
                 ShelfRow("Ähnliche Titel", recs.distinctBy { it.url }, key = { it.url }) { r ->
-                    PosterCard(r.name, r.posterUrl, r.yearText()) { nav.go(Screen.Detail(r.apiName, r.url)) }
+                    PosterCard(r.name, r.posterUrl, r.yearText(), width = 165, showTitle = false) { nav.go(Screen.Detail(r.apiName, r.url)) }
                 }
             }
         }
